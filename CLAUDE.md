@@ -41,20 +41,26 @@ mindmap
 
 ## Projects
 
-| # | Project | Core Patterns | Status |
-|---|---------|--------------|--------|
-| 01 | [Flight Aggregator](SystemDesignLab/01-flight-aggregator/CLAUDE.md) | Aggregator, Circuit Breaker, Cache-Aside, Saga, Outbox | 🔨 Active |
-| 02 | Bank System | Event Sourcing, Saga, Outbox, Idempotency | ⏳ Pending |
-| 03 | Rate Limiter | Token Bucket, Sliding Window, Redis atomics | ⏳ Pending |
-| 04 | TinyURL | CQRS, Cache-Aside, Base62, Consistent Hashing | ⏳ Pending |
-| 05 | Twitter Feed | Fan-out, Event Sourcing, WebSocket | ⏳ Pending |
-| 06 | Discord | Real-time messaging, Presence, Partitioning | ⏳ Pending |
-| 07 | YouTube | Video pipeline, Transcoding Saga, CDN sim | ⏳ Pending |
-| 08 | Google Drive | Delta sync, Conflict resolution, S3 | ⏳ Pending |
-| 09 | Google Maps | Dijkstra/A*, QuadTree, Spatial indexing | ⏳ Pending |
-| 10 | Key-Value Store | LSM Tree, WAL, Bloom Filter | ⏳ Pending |
-| 11 | Library System | State machine, Reservation Saga | ⏳ Pending |
-| 12 | Distributed Message Queue | Partitioning, Offset management | ⏳ Pending |
+Projects are ordered so each one builds on skills from the previous.
+Each project includes an **AWS Equivalent** section (informational only — we build it ourselves to understand it).
+
+| # | Project | Core Patterns & Algorithms | AWS Equivalent |
+|---|---------|---------------------------|----------------|
+| 01 | Rate Limiter | Token Bucket, Sliding Window, Leaky Bucket, Redis atomics | API Gateway throttling, AWS WAF rate rules |
+| 02 | Consistent Hashing | Ring hash, Virtual nodes, Rendezvous hashing | ElastiCache cluster sharding, DynamoDB partitioning |
+| 03 | Key-Value Store | LSM Tree, WAL, Bloom Filter, SSTable, compaction | DynamoDB, ElastiCache (Redis/Memcached) |
+| 04 | Unique ID Generator | Snowflake ID, Clock drift, bit manipulation | DynamoDB auto-increment, SQS FIFO deduplication IDs |
+| 05 | URL Shortener | Base62, CQRS, Cache-Aside, Bloom Filter | Lambda + DynamoDB + CloudFront |
+| 06 | Web Crawler | BFS/DFS, URL deduplication, Politeness delay | SQS + Lambda + S3 |
+| 07 | Notification System | Fan-out, Push/Pull, Priority queues | SNS (push), SQS (pull), SES (email), Pinpoint (mobile) |
+| 08 | News Feed System | Fan-out on Write/Read, Timeline, hybrid ranking | ElastiCache + DynamoDB + Kinesis |
+| 09 | Twitter | Social graph, Trending topics, DM + Feed + Search | ElastiCache + DynamoDB + Kinesis + OpenSearch |
+| 10 | Chat System | WebSocket, Presence, Message ordering | API Gateway WebSocket, DynamoDB, ElastiCache |
+| 11 | Search Autocomplete | Trie, Top-K, Prefix hashing | OpenSearch, CloudSearch |
+| 12 | Google Maps | Dijkstra/A*, QuadTree, Spatial indexing, Tile serving | Location Service, OpenSearch geo, CloudFront |
+| 13 | YouTube | Video pipeline, Transcoding Saga, CDN | S3 + MediaConvert + CloudFront + SQS |
+| 14 | Google Drive | Delta sync, Conflict resolution, versioning | S3 Versioning + DynamoDB + CloudFront |
+| 15 | Library System | Rich DDD Aggregates, State machine, Reservation Saga | Step Functions (Saga), DynamoDB, SNS |
 
 ---
 
