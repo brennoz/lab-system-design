@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>01 — Rate Limiter</title>
+<style>
+  :root {
+    --bg: #0f172a; --surface: #1e293b; --border: #334155;
+    --text: #f1f5f9; --muted: #94a3b8; --accent: #38bdf8;
+    --green: #4ade80; --red: #f87171; --yellow: #fbbf24; --purple: #a78bfa;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; overflow: hidden; }
+
+  .slide { display: none; width: 100vw; height: 100vh; padding: 56px 72px; flex-direction: column; justify-content: center; }
+  .slide.active { display: flex; }
+
+  h1 { font-size: 3rem; font-weight: 700; color: var(--accent); line-height: 1.1; }
+  h2 { font-size: 1.9rem; font-weight: 600; color: var(--accent); margin-bottom: 28px; border-bottom: 2px solid var(--border); padding-bottom: 12px; }
+  h3 { font-size: 1.25rem; font-weight: 600; color: var(--yellow); margin-bottom: 10px; }
+  p  { color: var(--muted); font-size: 1.05rem; line-height: 1.7; margin-bottom: 10px; }
+
+  .tag { display: inline-block; background: var(--surface); border: 1px solid var(--border); color: var(--accent); font-size: 0.8rem; padding: 3px 10px; border-radius: 999px; margin: 3px; }
+  .subtitle { font-size: 1.2rem; color: var(--muted); margin: 16px 0 28px; }
+  .number { font-size: 5rem; font-weight: 800; color: var(--border); position: absolute; top: 40px; right: 72px; }
+
+  /* Two-column layout */
+  .cols { display: grid; gap: 32px; flex: 1; align-items: start; }
+  .cols-2 { grid-template-columns: 1fr 1fr; }
+  .cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+
+  /* Cards */
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 22px 26px; }
+  .card h3 { margin-bottom: 8px; }
+
+  /* Tables */
+  table { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
+  th { background: var(--surface); color: var(--accent); text-align: left; padding: 10px 14px; border-bottom: 2px solid var(--border); }
+  td { padding: 9px 14px; border-bottom: 1px solid var(--border); color: var(--text); }
+  tr:last-child td { border-bottom: none; }
+
+  /* Bullet lists */
+  ul { list-style: none; padding: 0; }
+  ul li { padding: 6px 0; padding-left: 22px; position: relative; color: var(--text); font-size: 0.98rem; line-height: 1.5; }
+  ul li::before { content: "▸"; position: absolute; left: 0; color: var(--accent); }
+  ul li.bad::before { color: var(--red); content: "✗"; }
+  ul li.good::before { color: var(--green); content: "✓"; }
+
+  /* Code */
+  code { background: var(--surface); color: var(--green); font-family: 'Fira Code', 'Cascadia Code', monospace; font-size: 0.88rem; padding: 2px 6px; border-radius: 4px; }
+  pre  { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 18px 22px; font-family: 'Fira Code', 'Cascadia Code', monospace; font-size: 0.85rem; color: var(--green); line-height: 1.6; overflow: auto; }
+
+  /* Badges */
+  .badge { display: inline-block; padding: 3px 12px; border-radius: 999px; font-size: 0.78rem; font-weight: 600; margin: 2px; }
+  .badge-blue   { background: #0369a1; color: #e0f2fe; }
+  .badge-green  { background: #166534; color: #dcfce7; }
+  .badge-red    { background: #991b1b; color: #fee2e2; }
+  .badge-yellow { background: #92400e; color: #fef3c7; }
+  .badge-purple { background: #5b21b6; color: #ede9fe; }
+
+  /* Diagram boxes */
+  .diagram { display: flex; align-items: center; justify-content: center; gap: 0; flex-wrap: wrap; margin: 16px 0; }
+  .box { background: var(--surface); border: 2px solid var(--border); border-radius: 8px; padding: 12px 20px; text-align: center; font-size: 0.88rem; min-width: 120px; }
+  .box.highlight { border-color: var(--accent); color: var(--accent); }
+  .box.good { border-color: var(--green); }
+  .box.bad  { border-color: var(--red); color: var(--red); }
+  .arrow { color: var(--muted); font-size: 1.4rem; padding: 0 8px; }
+
+  /* Formula */
+  .formula { background: var(--surface); border-left: 4px solid var(--accent); border-radius: 6px; padding: 14px 20px; font-family: monospace; font-size: 0.95rem; color: var(--yellow); margin: 12px 0; }
+
+  /* Navigation */
+  #nav { position: fixed; bottom: 24px; right: 32px; display: flex; gap: 10px; align-items: center; }
+  #nav button { background: var(--surface); border: 1px solid var(--border); color: var(--text); padding: 8px 18px; border-radius: 8px; cursor: pointer; font-size: 0.9rem; transition: border-color .2s; }
+  #nav button:hover { border-color: var(--accent); color: var(--accent); }
+  #progress { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); color: var(--muted); font-size: 0.85rem; }
+  #bar { position: fixed; top: 0; left: 0; height: 3px; background: var(--accent); transition: width .3s; }
+
+  @media print {
+    .slide { display: flex !important; page-break-after: always; height: 100vh; }
+    #nav, #progress, #bar { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<div id="bar"></div>
+
+<!-- ═══════════════════════════════════════════════════════ SLIDE 1 — Title -->
+<div class="slide active">
+  <div style="margin-bottom:12px">
+    <span class="badge badge-blue">Project 01 of 17</span>
+    <span class="badge badge-purple">System Design Lab</span>
+  </div>
+  <h1>Rate Limiter</h1>
+  <p class="subtitle">Controlling request flow at scale with Token Bucket &amp; Sliding Window algorithms</p>
+  <div style="margin-top: 8px">
+    <span class="tag">Redis</span><span class="tag">Java 21</span><span class="tag">Spring Boot 3.3</span>
+    <span class="tag">Lua Scripts</span><span class="tag">Hexagonal Architecture</span><span class="tag">TDD</span>
+  </div>
+  <div style="margin-top: 48px; display:flex; gap: 40px;">
+    <div>
+      <p style="font-size:0.85rem; color:var(--muted); margin-bottom:6px">PATTERNS</p>
+      <p style="color:var(--text)">Token Bucket · Sliding Window · Fixed Window (flaw only)</p>
+    </div>
+    <div>
+      <p style="font-size:0.85rem; color:var(--muted); margin-bottom:6px">AWS EQUIVALENT</p>
+      <p style="color:var(--text)">API Gateway throttling · AWS WAF rate rules</p>
+    </div>
+    <div>
+      <p style="font-size:0.85rem; color:var(--muted); margin-bottom:6px">COMPLEXITY</p>
+      <p style="color:var(--green)">O(1) per request</p>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════ SLIDE 2 — The Problem -->
+<div class="slide">
+  <h2>Why Rate Limiting?</h2>
+  <div class="cols cols-2" style="gap:24px; margin-top:8px">
+    <div>
+      <h3>Without a rate limiter…</h3>
+      <ul>
+        <li class="bad">A buggy client loops → server OOM crash</li>
+        <li class="bad">A scraper hammers the API → data leak + cost explosion</li>
+        <li class="bad">One noisy tenant starves all others</li>
+        <li class="bad">DDoS attack takes down the entire platform</li>
+      </ul>
+      <br/>
+      <h3>With a rate limiter…</h3>
+      <ul>
+        <li class="good">Predictable load — capacity planning is possible</li>
+        <li class="good">Fair usage across all clients</li>
+        <li class="good">Protection for downstream services</li>
+        <li class="good">Clear API contracts (quotas communicated upfront)</li>
+      </ul>
+    </div>
+    <div>
+      <h3>Real limits in production</h3>
+      <table>
+        <tr><th>Company</th><th>Limit</th></tr>
+        <tr><td>Twitter API</td><td>300 req / 15 min / user</td></tr>
+        <tr><td>Stripe</td><td>100 req / sec / API key</td></tr>
+        <tr><td>GitHub</td><td>5 000 req / hour / token</td></tr>
+        <tr><td>OpenAI GPT-4</td><td>500 req / min / tier</td></tr>
+        <tr><td>Google Maps</td><td>50 req / sec / project</td></tr>
+      </table>
+      <br/>
+      <div class="card">
+        <p style="font-size:0.9rem">HTTP response when limit exceeded:</p>
+        <code>429 Too Many Requests</code><br/>
+        <code>Retry-After: 42</code>
+        <p style="margin-top:8px; font-size:0.85rem; color:var(--muted)">RFC 6585 — clients that respect Retry-After back off automatically</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════ SLIDE 3 — Where to place -->
+<div class="slide">
+  <h2>Where to Place a Rate Limiter</h2>
+  <div class="cols cols-2" style="margin-top:8px">
+    <div>
+      <table>
+        <tr><th>Option</th><th>Pro</th><th>Con</th></tr>
+        <tr><td><span style="color:var(--red)">Client-side</span></td><td>No server load</td><td>Trivially bypassed</td></tr>
+        <tr><td>API Gateway</td><td>Centralised</td><td>Less flexible rules</td></tr>
+        <tr><td>Per-service filter</td><td>Simple deploy</td><td>Not shared across replicas</td></tr>
+        <tr><td><span style="color:var(--green)"><strong>Standalone service ✓</strong></span></td><td>Shared state, flexible</td><td>Extra network hop</td></tr>
+      </table>
+      <br/>
+      <div class="card">
+        <h3>Why not the per-service filter?</h3>
+        <p style="font-size:0.9rem">3 replicas of search-service, each with local counter for limit=100 req/min → effective limit is <strong style="color:var(--red)">300 req/min</strong>. Redis shared counter = always exactly 100.</p>
+      </div>
+    </div>
+    <div>
+      <div class="diagram" style="flex-direction:column; gap:14px; align-items:flex-start">
+        <div style="display:flex; align-items:center; gap:12px">
+          <div class="box" style="min-width:100px">Service A</div>
+          <div class="arrow">→</div>
+          <div class="box highlight">Rate Limiter<br/><small>:8080</small></div>
+          <div class="arrow">→</div>
+          <div class="box" style="border-color:var(--green); color:var(--green)">Redis<br/><small>counters</small></div>
+        </div>
+        <div style="display:flex; align-items:center; gap:12px">
+          <div class="box" style="min-width:100px">Service B</div>
+          <div class="arrow">→</div>
+          <div class="box highlight">Rate Limiter<br/><small>:8080</small></div>
+        </div>
+      </div>
+      <br/>
+      <ul>
+        <li>One service, shared by all others</li>
+        <li>Each service calls <code>POST /rate-limit/check</code> before processing</li>
+        <li>Redis holds all counters with TTL — no cleanup needed</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════ SLIDE 4 — Algorithm: Token Bucket -->
+<div class="slide">
+  <h2>Algorithm 1 — Token Bucket <span class="badge badge-green">✓ Implemented</span></h2>
+  <div class="cols cols-2" style="margin-top:8px">
+    <div>
+      <div style="text-align:center; padding: 20px; background:var(--surface); border-radius:12px; border:1px solid var(--border)">
+        <div style="font-size:3rem; margin-bottom:8px">🪣</div>
+        <div style="color:var(--accent); font-weight:600; margin-bottom:4px">Token Bucket</div>
+        <div style="color:var(--muted); font-size:0.85rem">capacity: N = 10 | refill: R = 2/sec</div>
+        <div style="margin-top:16px; display:flex; justify-content:center; gap:6px; flex-wrap:wrap">
+          <span style="background:var(--accent);width:28px;height:28px;border-radius:50%;display:inline-block"></span>
+          <span style="background:var(--accent);width:28px;height:28px;border-radius:50%;display:inline-block"></span>
+          <span style="background:var(--accent);width:28px;height:28px;border-radius:50%;display:inline-block"></span>
+          <span style="background:var(--accent);width:28px;height:28px;border-radius:50%;display:inline-block"></span>
+          <span style="background:var(--accent);width:28px;height:28px;border-radius:50%;display:inline-block"></span>
+          <span style="background:var(--accent);width:28px;height:28px;border-radius:50%;display:inline-block"></span>
+          <span style="background:var(--accent);width:28px;height:28px;border-radius:50%;display:inline-block"></span>
+          <span style="background:var(--border);width:28px;height:28px;border-radius:50%;display:inline-block"></span>
+          <span style="background:var(--border);width:28px;height:28px;border-radius:50%;display:inline-block"></span>
+          <span style="background:var(--border);width:28px;height:28px;border-radius:50%;display:inline-block"></span>
+        </div>
+        <div style="margin-top:12px; color:var(--text); font-size:0.9rem">7 tokens remaining</div>
+      </div>
+    </div>
+    <div>
+      <h3>How it works</h3>
+      <ul>
+        <li>Bucket holds max <code>N</code> tokens</li>
+        <li>Refilled at rate <code>R</code> tokens/second</li>
+        <li>Each request consumes 1 token</li>
+        <li class="bad">Bucket empty → reject with 429</li>
+      </ul>
+      <br/>
+      <h3>Properties</h3>
+      <ul>
+        <li class="good">Allows controlled <strong>bursts</strong> — full bucket = N instant requests</li>
+        <li class="good">Average rate bounded by refill rate R</li>
+        <li class="good"><strong>O(1)</strong> per request — one atomic Redis counter</li>
+      </ul>
+      <br/>
+      <div class="card">
+        <h3>Why Lua scripts in Redis?</h3>
+        <p style="font-size:0.88rem"><code>GET</code> then <code>DECR</code> = two commands. Between them another request slips through. Lua executes atomically — no race condition possible.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════ SLIDE 5 — Algorithm: Sliding Window -->
+<div class="slide">
+  <h2>Algorithm 2 — Sliding Window Counter <span class="badge badge-green">✓ Implemented</span></h2>
+  <div class="cols cols-2" style="margin-top:8px">
+    <div>
+      <div style="background:var(--surface); border-radius:12px; border:1px solid var(--border); padding:20px">
+        <div style="display:flex; gap:0; margin-bottom:16px">
+          <div style="flex:1; border:2px solid var(--border); border-radius:6px 0 0 6px; padding:12px; text-align:center">
+            <div style="color:var(--muted); font-size:0.8rem">PREVIOUS WINDOW</div>
+            <div style="font-size:1.8rem; color:var(--text); font-weight:700">80</div>
+            <div style="color:var(--muted); font-size:0.8rem">requests</div>
+          </div>
+          <div style="flex:1; border:2px solid var(--accent); border-radius:0 6px 6px 0; padding:12px; text-align:center">
+            <div style="color:var(--accent); font-size:0.8rem">CURRENT WINDOW</div>
+            <div style="font-size:1.8rem; color:var(--text); font-weight:700">30</div>
+            <div style="color:var(--muted); font-size:0.8rem">requests · 15s elapsed</div>
+          </div>
+        </div>
+        <div class="formula">
+          effective = curr + prev × (1 − elapsed/window)<br/>
+          effective = 30 + 80 × (1 − 15/60)<br/>
+          effective = 30 + 60 = <span style="color:var(--green)">90</span>
+        </div>
+        <div style="text-align:center; margin-top:10px">
+          <span class="badge badge-green">90 &lt; 100 limit → ALLOW ✓</span>
+        </div>
+      </div>
+    </div>
+    <div>
+      <h3>Why this fixes Fixed Window</h3>
+      <ul>
+        <li>No hard boundary to exploit</li>
+        <li>Weight of previous window decreases as current window progresses</li>
+        <li>Approximation — but accurate enough for all practical purposes</li>
+        <li class="good">O(1) — two Redis INCR + one formula</li>
+      </ul>
+      <br/>
+      <h3>Fixed Window flaw (why we don't use it)</h3>
+      <div style="background:#1c0a0a; border:1px solid var(--red); border-radius:8px; padding:14px; font-family:monospace; font-size:0.82rem; color:var(--red)">
+        12:00:59 → 100 req  [end of window A]<br/>
+        12:01:00 → 100 req  [start of window B]<br/>
+        = 200 requests in 2 seconds<br/>
+        <span style="color:var(--muted)">despite 100/min limit</span>
+      </div>
+      <br/>
+      <h3>Redis keys</h3>
+      <pre>rl:sw:user:123:1000  (current)  TTL: 120s
+rl:sw:user:123:999   (previous) TTL: 120s</pre>
+    </div>
+  </div>
+</div>
+
+<!-- ═════════════════════════════════════════════ SLIDE 6 — Data Model -->
+<div class="slide">
+  <h2>Data Model — Domain Layer</h2>
+  <div class="cols cols-3" style="margin-top: 8px">
+    <div class="card">
+      <h3>RateLimitKey</h3>
+      <span class="badge badge-blue">Value Object</span>
+      <br/><br/>
+      <pre>type: "user"
+id:   "123"
+→ value: "user:123"</pre>
+      <br/>
+      <ul>
+        <li>Wraps a String — prevents passing <code>"user:123"</code> where <code>"apikey:abc"</code> is expected</li>
+        <li>Validates format on construction</li>
+        <li>Equality by value (record)</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>RateLimit</h3>
+      <span class="badge badge-blue">Value Object</span>
+      <br/><br/>
+      <pre>maxRequests: 100
+window: Duration.ofSeconds(60)
+algorithm: TOKEN_BUCKET</pre>
+      <br/>
+      <ul>
+        <li><code>Duration</code> not <code>int</code> — self-documenting, no unit ambiguity</li>
+        <li>Rejects maxRequests ≤ 0</li>
+        <li>Rejects null or zero window</li>
+        <li>Immutable rule — configured per client type</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>RateLimitResult</h3>
+      <span class="badge badge-blue">Value Object</span>
+      <br/><br/>
+      <pre>allowed:    true/false
+remaining:  42
+resetAt:    Instant
+retryAfter: Duration</pre>
+      <br/>
+      <ul>
+        <li><code>allowed=false</code> → HTTP 429</li>
+        <li><code>retryAfter</code> → <code>Retry-After</code> header</li>
+        <li>RFC 6585 compliance</li>
+        <li>Clients back off automatically</li>
+      </ul>
+    </div>
+  </div>
+  <br/>
+  <div class="card" style="background:transparent; border-color:var(--accent)">
+    <p style="font-size:0.9rem"><strong style="color:var(--accent)">Why all three are Value Objects (Java records)?</strong> They're immutable snapshots — a rate limit rule doesn't change, a result doesn't change. Records give you equals/hashCode/toString for free, based on all fields.</p>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════ SLIDE 7 — Key Decisions -->
+<div class="slide">
+  <h2>Key Design Decisions</h2>
+  <table style="margin-top:12px; font-size:0.95rem">
+    <tr><th style="width:25%">Decision</th><th style="width:30%">Choice</th><th>Why</th></tr>
+    <tr>
+      <td>Counter storage</td>
+      <td><span style="color:var(--accent)">Redis</span></td>
+      <td>Distributed, atomic ops (<code>INCR</code>), TTL auto-expires old keys — no cron job needed</td>
+    </tr>
+    <tr>
+      <td>Atomicity</td>
+      <td><span style="color:var(--accent)">Lua scripts</span></td>
+      <td>GET + DECR must be a single atomic unit. Lua scripts run single-threaded in Redis</td>
+    </tr>
+    <tr>
+      <td>Two algorithms</td>
+      <td><span style="color:var(--accent)">Token Bucket + Sliding Window</span></td>
+      <td>Token Bucket = bursts OK (APIs). Sliding Window = accurate at boundaries (billing)</td>
+    </tr>
+    <tr>
+      <td>No database</td>
+      <td><span style="color:var(--accent)">Redis only</span></td>
+      <td>Rate limit state is ephemeral — losing it on restart is acceptable, unlike bookings</td>
+    </tr>
+    <tr>
+      <td>Response on limit</td>
+      <td><span style="color:var(--accent)">HTTP 429 + Retry-After</span></td>
+      <td>RFC 6585. Well-behaved clients back off automatically without hammering the service</td>
+    </tr>
+    <tr>
+      <td>Key format</td>
+      <td><span style="color:var(--accent)">rl:{algo}:{type}:{id}:{epoch}</span></td>
+      <td>Namespaced to avoid Redis key collisions. Epoch buckets auto-partition by window</td>
+    </tr>
+  </table>
+</div>
+
+<!-- ═════════════════════════════════════════ SLIDE 8 — AWS Equivalent -->
+<div class="slide">
+  <h2>AWS Equivalent <span class="badge badge-yellow">Informational only — not implemented</span></h2>
+  <p style="margin-bottom:20px">In production you'd use managed services. We build it ourselves to understand what they do internally.</p>
+  <table>
+    <tr><th>What we build</th><th>AWS managed service</th><th>Notes</th></tr>
+    <tr>
+      <td>Token Bucket per API key</td>
+      <td><span style="color:var(--accent)">API Gateway Usage Plans</span></td>
+      <td>Burst limit + steady-state rate per API key. Managed, no code needed.</td>
+    </tr>
+    <tr>
+      <td>Sliding Window per IP</td>
+      <td><span style="color:var(--accent)">AWS WAF Rate-Based Rules</span></td>
+      <td>5-minute sliding window per IP. Auto-blocks. Works at CloudFront edge.</td>
+    </tr>
+    <tr>
+      <td>Standalone limiter service</td>
+      <td><span style="color:var(--accent)">Lambda Authorizer</span></td>
+      <td>Runs before every API Gateway request. Can read DynamoDB counters.</td>
+    </tr>
+    <tr>
+      <td>Redis counters + Lua</td>
+      <td><span style="color:var(--accent)">ElastiCache (Redis)</span></td>
+      <td>Same data structures, managed cluster, auto-failover, Multi-AZ.</td>
+    </tr>
+    <tr>
+      <td>Custom algorithm selection</td>
+      <td><span style="color:var(--accent)">Not available managed</span></td>
+      <td>AWS WAF is fixed-window. Building your own = full algorithm control.</td>
+    </tr>
+  </table>
+  <br/>
+  <div class="card" style="background:transparent; border-color:var(--yellow)">
+    <p style="font-size:0.9rem; color:var(--yellow)">Interview tip: Always mention the trade-off between <strong>build vs buy</strong>. Managed services = less ops burden. Custom build = full control over algorithms, latency, and cost.</p>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════ SLIDE 9 — Patterns Cheatsheet -->
+<div class="slide">
+  <h2>Patterns &amp; Algorithms — Cheat Sheet</h2>
+  <div class="cols cols-2" style="margin-top:8px">
+    <div>
+      <h3>Design Patterns Used</h3>
+      <table>
+        <tr><th>Pattern</th><th>Where</th></tr>
+        <tr><td><span style="color:var(--accent)">Hexagonal Architecture</span></td><td>Domain defines <code>RateLimitStore</code> port; Redis implements it</td></tr>
+        <tr><td><span style="color:var(--accent)">Strategy Pattern</span></td><td><code>RateLimiterAlgorithm</code> interface — swap Token Bucket ↔ Sliding Window</td></tr>
+        <tr><td><span style="color:var(--accent)">Value Object</span></td><td><code>RateLimitKey</code>, <code>RateLimit</code>, <code>RateLimitResult</code> — immutable records</td></tr>
+        <tr><td><span style="color:var(--accent)">Domain Service</span></td><td>Algorithm logic doesn't belong to one entity — stateless service</td></tr>
+      </table>
+    </div>
+    <div>
+      <h3>Algorithms Used</h3>
+      <table>
+        <tr><th>Algorithm</th><th>Complexity</th><th>Best for</th></tr>
+        <tr><td><span style="color:var(--green)">Token Bucket</span></td><td>O(1)</td><td>APIs that allow bursts</td></tr>
+        <tr><td><span style="color:var(--green)">Sliding Window</span></td><td>O(1)</td><td>Billing, boundary-accurate</td></tr>
+        <tr><td><span style="color:var(--red)">Fixed Window</span></td><td>O(1)</td><td>❌ Boundary vulnerability</td></tr>
+        <tr><td><span style="color:var(--muted)">Sliding Window Log</span></td><td>O(N)</td><td>Only tiny traffic APIs</td></tr>
+        <tr><td><span style="color:var(--muted)">Leaky Bucket</span></td><td>O(1)</td><td>Smooth output rate</td></tr>
+      </table>
+    </div>
+  </div>
+  <br/>
+  <div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:8px">
+    <div class="card" style="flex:1; min-width:200px">
+      <h3>Stack</h3>
+      <span class="tag">Java 21</span><span class="tag">Spring Boot 3.3</span>
+      <span class="tag">Redis 7</span><span class="tag">Docker</span>
+      <span class="tag">JUnit 5</span><span class="tag">Mockito</span><span class="tag">AssertJ</span>
+    </div>
+    <div class="card" style="flex:1; min-width:200px">
+      <h3>Test Coverage</h3>
+      <ul>
+        <li>Value Object invariants (unit)</li>
+        <li>Algorithm correctness (unit)</li>
+        <li>Use case orchestration (Mockito)</li>
+        <li>Redis integration (Testcontainers)</li>
+        <li>REST API (@WebMvcTest)</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════ Navigation -->
+<div id="nav">
+  <button onclick="go(-1)">← Prev</button>
+  <button onclick="go(1)">Next →</button>
+</div>
+<div id="progress"></div>
+
+<script>
+  const slides = document.querySelectorAll('.slide');
+  let cur = 0;
+  function show(n) {
+    slides[cur].classList.remove('active');
+    cur = (n + slides.length) % slides.length;
+    slides[cur].classList.add('active');
+    document.getElementById('progress').textContent = (cur + 1) + ' / ' + slides.length;
+    document.getElementById('bar').style.width = ((cur + 1) / slides.length * 100) + '%';
+  }
+  function go(d) { show(cur + d); }
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === ' ') { e.preventDefault(); go(1); }
+    if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')                    { e.preventDefault(); go(-1); }
+  });
+  show(0);
+</script>
+</body>
+</html>

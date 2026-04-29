@@ -53,14 +53,16 @@ Each project includes an **AWS Equivalent** section (informational only — we b
 | 05 | URL Shortener | Base62, CQRS, Cache-Aside, Bloom Filter | Lambda + DynamoDB + CloudFront |
 | 06 | Web Crawler | BFS/DFS, URL deduplication, Politeness delay | SQS + Lambda + S3 |
 | 07 | Notification System | Fan-out, Push/Pull, Priority queues | SNS (push), SQS (pull), SES (email), Pinpoint (mobile) |
-| 08 | News Feed System | Fan-out on Write/Read, Timeline, hybrid ranking | ElastiCache + DynamoDB + Kinesis |
-| 09 | Twitter | Social graph, Trending topics, DM + Feed + Search | ElastiCache + DynamoDB + Kinesis + OpenSearch |
-| 10 | Chat System | WebSocket, Presence, Message ordering | API Gateway WebSocket, DynamoDB, ElastiCache |
-| 11 | Search Autocomplete | Trie, Top-K, Prefix hashing | OpenSearch, CloudSearch |
-| 12 | Google Maps | Dijkstra/A*, QuadTree, Spatial indexing, Tile serving | Location Service, OpenSearch geo, CloudFront |
-| 13 | YouTube | Video pipeline, Transcoding Saga, CDN | S3 + MediaConvert + CloudFront + SQS |
-| 14 | Google Drive | Delta sync, Conflict resolution, versioning | S3 Versioning + DynamoDB + CloudFront |
-| 15 | Library System | Rich DDD Aggregates, State machine, Reservation Saga | Step Functions (Saga), DynamoDB, SNS |
+| 08 | Flight Aggregator | Aggregator, Circuit Breaker, Cache-Aside, Saga, Outbox | API Gateway + Lambda + ElastiCache + Step Functions |
+| 09 | Bank System | Event Sourcing, Saga, Outbox, Idempotency, 2PC alt — **JWT auth** | Step Functions, DynamoDB Streams, SQS FIFO |
+| 10 | News Feed System | Fan-out on Write/Read, Timeline, hybrid ranking | ElastiCache + DynamoDB + Kinesis |
+| 11 | Twitter | Social graph, Trending topics, DM + Feed — **Neo4j, Elasticsearch, JWT auth, Prometheus** | ElastiCache + DynamoDB + Kinesis + OpenSearch |
+| 12 | Chat System | WebSocket, Presence, Message ordering — **MongoDB** | API Gateway WebSocket, DynamoDB, ElastiCache |
+| 13 | Search Autocomplete | Trie, Top-K, Prefix hashing | OpenSearch, CloudSearch |
+| 14 | Google Maps | Dijkstra/A*, QuadTree, Spatial indexing, Tile serving — **Neo4j** | Location Service, OpenSearch geo, CloudFront |
+| 15 | YouTube | Video pipeline, Transcoding Saga, CDN | S3 + MediaConvert + CloudFront + SQS |
+| 16 | Google Drive | Delta sync, Conflict resolution, versioning — **MongoDB** | S3 Versioning + DynamoDB + CloudFront |
+| 17 | Library System | Rich DDD Aggregates, State machine, Reservation Saga | Step Functions (Saga), DynamoDB, SNS |
 
 ---
 
@@ -75,12 +77,17 @@ Each project includes an **AWS Equivalent** section (informational only — we b
 | Task queues | RabbitMQ | Work distribution where replay is not needed |
 | Cache | Redis | Distributed, fast, supports atomic operations (used in Rate Limiter too) |
 | Database | PostgreSQL | ACID transactions, JSONB for outbox payloads |
+| Document DB | MongoDB | Schema-flexible documents — chat messages (12), file metadata (16) |
+| Graph DB | Neo4j | Native graph model — social graph (11), road network (14) |
 | Object storage | LocalStack | Simulates AWS S3 locally — no AWS account needed |
+| Search | Elasticsearch | Full-text search and indexing — tweet search (11) |
+| Observability | Prometheus + Grafana | Metrics collection and dashboards — wired into projects 01 and 11 |
+| Auth | Spring Security + JWT | Stateless token auth — no Keycloak overhead; used in projects 09 and 11 |
 | API simulation | WireMock | Simulates external APIs with configurable failures |
 | Resilience | resilience4j | Circuit Breaker, Retry, Rate Limiter, Bulkhead |
 | API Gateway | Spring Cloud Gateway | Reactive, routes requests to correct service |
 | Containers | Docker + Docker Compose | Reproducible local environment, one command to start everything |
-| Testing | JUnit 5 + Mockito + Testcontainers + AssertJ | Full pyramid: unit → integration → e2e |
+| Testing | JUnit 5 + Mockito + AssertJ | Unit tests only — real infra verified manually via docker-compose + curl |
 | API docs | SpringDoc OpenAPI | Auto-generates Swagger UI from annotations |
 
 ---
@@ -120,6 +127,10 @@ Each project includes an **AWS Equivalent** section (informational only — we b
 3. Write the **minimum code** to make it pass (Green)
 4. Refactor if needed, keep tests green
 5. Repeat
+
+**Test count rule:** write only the tests that cover core behaviour — the happy path and the one meaningful failure path. Skip validation edge cases (null checks, blank strings) and implementation-detail assertions (exact method call counts, internal key formats). A class should have 2–4 tests, not 8.
+
+**No integration tests:** skip Testcontainers and Spring context tests entirely. Unit tests with Mockito only. Real infrastructure (Redis, Kafka, Postgres) is verified manually via `docker-compose up` + curl/Postman.
 
 ### 3. Comment Convention
 
