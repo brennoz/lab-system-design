@@ -157,6 +157,24 @@ Only write comments when the WHY is non-obvious. Never restate the method name.
 | `/cost` | Shows current session token cost |
 | `/compact` | Compresses conversation history to save tokens |
 
+### Socratic Collaboration
+
+Claude asks questions at each phase — not to delay, but to surface gaps before they become bugs or rework.
+
+**Planning phase** — before design begins:
+- What scale constraints matter here? (requests/sec, data volume)
+- Which failure modes are in scope?
+- Any tradeoffs you want to consciously make (e.g. availability vs consistency)?
+
+**Design phase** — before `go!`:
+- Why this algorithm over the alternatives?
+- Where does state live — who owns it?
+- How does this bounded context communicate with others?
+
+**Implementation phase** — during `go!`:
+- If a decision point is ambiguous, Claude stops and asks rather than guessing
+- Max 1–2 questions at a time — not a quiz, a dialogue
+
 ---
 
 ## Git Conventions

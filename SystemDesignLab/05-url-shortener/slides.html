@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>05 — URL Shortener</title>
+<style>
+  :root {
+    --bg: #0f172a; --surface: #1e293b; --border: #334155;
+    --text: #f1f5f9; --muted: #94a3b8; --accent: #38bdf8;
+    --green: #4ade80; --red: #f87171; --yellow: #fbbf24; --purple: #a78bfa;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; overflow: hidden; }
+
+  .slide { display: none; width: 100vw; height: 100vh; padding: 56px 72px; flex-direction: column; justify-content: center; }
+  .slide.active { display: flex; }
+
+  h1 { font-size: 3rem; font-weight: 700; color: var(--accent); line-height: 1.1; }
+  h2 { font-size: 1.9rem; font-weight: 600; color: var(--accent); margin-bottom: 28px; border-bottom: 2px solid var(--border); padding-bottom: 12px; }
+  h3 { font-size: 1.25rem; font-weight: 600; color: var(--yellow); margin-bottom: 10px; }
+  p  { color: var(--muted); font-size: 1.05rem; line-height: 1.7; margin-bottom: 10px; }
+
+  .tag { display: inline-block; background: var(--surface); border: 1px solid var(--border); color: var(--accent); font-size: 0.8rem; padding: 3px 10px; border-radius: 999px; margin: 3px; }
+  .subtitle { font-size: 1.2rem; color: var(--muted); margin: 16px 0 28px; }
+  .number { font-size: 5rem; font-weight: 800; color: var(--border); position: absolute; top: 40px; right: 72px; }
+
+  .cols { display: grid; gap: 32px; flex: 1; align-items: start; }
+  .cols-2 { grid-template-columns: 1fr 1fr; }
+  .cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px; }
+  .card h3 { margin-bottom: 8px; }
+
+  ul { list-style: none; padding: 0; }
+  ul li { color: var(--muted); font-size: 1rem; line-height: 1.8; padding-left: 20px; position: relative; }
+  ul li::before { content: '→'; color: var(--accent); position: absolute; left: 0; }
+
+  code { background: var(--surface); color: var(--green); padding: 2px 8px; border-radius: 4px; font-family: 'Fira Code', monospace; font-size: 0.95em; }
+  pre { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 20px; font-family: 'Fira Code', monospace; font-size: 0.9rem; color: var(--green); line-height: 1.6; overflow: auto; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
+  th { background: var(--surface); color: var(--accent); padding: 10px 14px; text-align: left; border-bottom: 2px solid var(--border); }
+  td { padding: 9px 14px; border-bottom: 1px solid var(--border); color: var(--muted); }
+  tr:last-child td { border-bottom: none; }
+
+  .badge { display: inline-block; padding: 3px 12px; border-radius: 999px; font-size: 0.8rem; font-weight: 600; }
+  .badge-green { background: #14532d; color: var(--green); }
+  .badge-red { background: #450a0a; color: var(--red); }
+  .badge-blue { background: #0c4a6e; color: var(--accent); }
+  .badge-yellow { background: #451a03; color: var(--yellow); }
+
+  .flow { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .flow-box { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 18px; font-size: 0.9rem; color: var(--text); white-space: nowrap; }
+  .flow-box.highlight { border-color: var(--accent); color: var(--accent); }
+  .flow-box.green { border-color: var(--green); color: var(--green); }
+  .flow-box.red { border-color: var(--red); color: var(--red); }
+  .flow-arrow { color: var(--muted); font-size: 1.2rem; }
+
+  .nav { position: fixed; bottom: 28px; right: 40px; display: flex; gap: 12px; align-items: center; }
+  .nav button { background: var(--surface); border: 1px solid var(--border); color: var(--text); padding: 8px 20px; border-radius: 8px; cursor: pointer; font-size: 0.9rem; transition: border-color 0.2s; }
+  .nav button:hover { border-color: var(--accent); }
+  .nav .counter { color: var(--muted); font-size: 0.85rem; min-width: 50px; text-align: center; }
+
+  .arch-layer { border-left: 3px solid var(--accent); padding: 12px 20px; margin-bottom: 12px; background: var(--surface); border-radius: 0 8px 8px 0; }
+  .arch-layer.infra { border-color: var(--yellow); }
+  .arch-layer.api { border-color: var(--purple); }
+  .arch-layer.app { border-color: var(--green); }
+</style>
+</head>
+<body>
+
+<!-- Slide 1: Title -->
+<div class="slide active">
+  <div class="number">05</div>
+  <h1>URL Shortener</h1>
+  <p class="subtitle">Base62 · CQRS · Cache-Aside · Bloom Filter</p>
+  <div style="margin-top: 8px;">
+    <span class="tag">PostgreSQL</span>
+    <span class="tag">Redis</span>
+    <span class="tag">Spring Boot 3.3</span>
+    <span class="tag">Java 21</span>
+    <span class="tag">Hexagonal Architecture</span>
+  </div>
+  <div style="margin-top: 40px; max-width: 640px;">
+    <p>Given a long URL, produce a short alias. When visited, redirect to the original.</p>
+    <p style="margin-top: 10px;">Read traffic dominates write traffic 100:1. Every design decision flows from this asymmetry.</p>
+  </div>
+</div>
+
+<!-- Slide 2: Problem -->
+<div class="slide">
+  <h2>Why This Is Hard</h2>
+  <div class="cols cols-2">
+    <div>
+      <div class="card" style="margin-bottom: 16px;">
+        <h3>Scale constraints</h3>
+        <ul>
+          <li>Redirect latency must be &lt; 10ms → cache is mandatory</li>
+          <li>100:1 read/write ratio → read path must be optimised separately</li>
+          <li>Viral links → millions of hits on one short code</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Correctness constraints</h3>
+        <ul>
+          <li>Short codes must be globally unique</li>
+          <li>Codes must be URL-safe (no <code>+</code> or <code>/</code>)</li>
+          <li>Cache-busting attacks must be blocked cheaply</li>
+        </ul>
+      </div>
+    </div>
+    <div class="card">
+      <h3>What we will build</h3>
+      <ul style="margin-bottom: 16px;">
+        <li><code>POST /api/v1/shorten</code> → returns short code</li>
+        <li><code>GET /r/{code}</code> → 302 redirect to original</li>
+      </ul>
+      <h3 style="margin-top: 16px;">Patterns used</h3>
+      <ul>
+        <li><strong>Base62 encoding</strong> — no-collision ID → code</li>
+        <li><strong>CQRS</strong> — separate write and read paths</li>
+        <li><strong>Cache-Aside</strong> — Redis in front of PostgreSQL</li>
+        <li><strong>Bloom Filter</strong> — blocks random code enumeration</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- Slide 3: Base62 -->
+<div class="slide">
+  <h2>Algorithm: Base62 Encoding</h2>
+  <div class="cols cols-2">
+    <div>
+      <p>Alphabet: <code>0-9 a-z A-Z</code> — 62 characters, all URL-safe.</p>
+      <p style="margin-top: 8px;"><strong style="color: var(--red);">Why not Base64?</strong> Base64 adds <code>+</code> and <code>/</code> — special characters in URLs. Require percent-encoding, making short codes ugly and fragile.</p>
+      <div class="card" style="margin-top: 20px;">
+        <h3>Why auto-increment ID, not hash?</h3>
+        <table style="margin-top: 12px;">
+          <tr><th></th><th>Hash URL</th><th>Auto-increment ID</th></tr>
+          <tr><td>Collision</td><td><span class="badge badge-red">Possible</span></td><td><span class="badge badge-green">Never</span></td></tr>
+          <tr><td>Extra DB check</td><td><span class="badge badge-red">Every write</span></td><td><span class="badge badge-green">None</span></td></tr>
+          <tr><td>Complexity</td><td>O(1) + retry loop</td><td>O(1) always</td></tr>
+        </table>
+      </div>
+    </div>
+    <div>
+      <pre>ALPHABET = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
+encode(id):
+  while id > 0:
+    result.prepend(ALPHABET[id % 62])
+    id = id / 62
+
+decode(code):
+  for each char in code:
+    result = result * 62 + ALPHABET.indexOf(char)
+
+Examples:
+  ID = 1      → "1"
+  ID = 62     → "10"
+  ID = 125000 → "W0s"
+  62⁶ = 56 billion URLs in 6 chars max</pre>
+      <p style="margin-top: 12px; color: var(--yellow);">Key insight: shortCode is never stored in DB. Derived from ID at runtime in both directions.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Slide 4: Bloom Filter -->
+<div class="slide">
+  <h2>Data Structure: Bloom Filter</h2>
+  <div class="cols cols-2">
+    <div>
+      <p>Probabilistic bit array. Answers: "does this code exist?"</p>
+      <div class="card" style="margin-top: 16px;">
+        <h3>Properties</h3>
+        <ul>
+          <li><strong style="color: var(--green);">No false negatives</strong> — NO means definitely absent → safe 404</li>
+          <li><strong style="color: var(--yellow);">~1% false positives</strong> — YES means maybe present → check cache/DB</li>
+        </ul>
+      </div>
+      <div class="card" style="margin-top: 16px;">
+        <h3>Why it matters</h3>
+        <p>Without Bloom Filter: random code enumeration forces a DB query per miss. With it: definite misses absorbed at O(k) in memory — never reach Redis or PostgreSQL.</p>
+      </div>
+      <div class="card" style="margin-top: 16px;">
+        <h3>Implementation</h3>
+        <p>Redis <code>SETBIT</code> / <code>GETBIT</code> — 3 hash functions, 10M bit array ≈ 1.2MB. Persistent across restarts. Shared across instances.</p>
+      </div>
+    </div>
+    <div>
+      <h3>Read path with Bloom Filter</h3>
+      <div style="margin-top: 16px; display: flex; flex-direction: column; gap: 10px;">
+        <div class="flow-box highlight">GET /r/{code}</div>
+        <div class="flow-arrow" style="margin-left: 20px;">↓</div>
+        <div class="flow-box">Bloom Filter: mightContain(code)?</div>
+        <div style="display: flex; gap: 24px; margin-left: 20px;">
+          <div style="display: flex; flex-direction: column; gap: 10px; align-items: center;">
+            <span style="color: var(--red); font-size: 0.85rem;">NO (definite miss)</span>
+            <div class="flow-box red">404 — no DB hit</div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 10px; align-items: center;">
+            <span style="color: var(--green); font-size: 0.85rem;">YES (maybe)</span>
+            <div class="flow-box">Redis cache check</div>
+            <div class="flow-arrow">↓</div>
+            <div class="flow-box green">302 Redirect</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Slide 5: CQRS -->
+<div class="slide">
+  <h2>Pattern: CQRS</h2>
+  <p>Two completely separate paths. Write side persists. Read side queries. Never mixed.</p>
+  <div class="cols cols-2" style="margin-top: 24px;">
+    <div>
+      <div class="card">
+        <h3 style="color: var(--yellow);">Write Side — Command</h3>
+        <div style="margin-top: 12px; display: flex; flex-direction: column; gap: 8px;">
+          <div class="flow-box highlight">POST /api/v1/shorten</div>
+          <div class="flow-arrow" style="margin-left: 20px;">↓</div>
+          <div class="flow-box">ShortenUrlUseCase</div>
+          <div class="flow-arrow" style="margin-left: 20px;">↓</div>
+          <div class="flow-box">INSERT into PostgreSQL → get ID</div>
+          <div class="flow-arrow" style="margin-left: 20px;">↓</div>
+          <div class="flow-box">encode ID → Base62 code</div>
+          <div class="flow-arrow" style="margin-left: 20px;">↓</div>
+          <div class="flow-box">add code to Bloom Filter</div>
+          <div class="flow-arrow" style="margin-left: 20px;">↓</div>
+          <div class="flow-box green">return ShortCode</div>
+        </div>
+      </div>
+    </div>
+    <div>
+      <div class="card">
+        <h3 style="color: var(--accent);">Read Side — Query</h3>
+        <div style="margin-top: 12px; display: flex; flex-direction: column; gap: 8px;">
+          <div class="flow-box highlight">GET /r/{code}</div>
+          <div class="flow-arrow" style="margin-left: 20px;">↓</div>
+          <div class="flow-box">ResolveUrlUseCase</div>
+          <div class="flow-arrow" style="margin-left: 20px;">↓</div>
+          <div class="flow-box">Bloom Filter check</div>
+          <div class="flow-arrow" style="margin-left: 20px;">↓</div>
+          <div class="flow-box">Redis Cache-Aside</div>
+          <div class="flow-arrow" style="margin-left: 20px;">↓</div>
+          <div class="flow-box">PostgreSQL (on miss)</div>
+          <div class="flow-arrow" style="margin-left: 20px;">↓</div>
+          <div class="flow-box green">302 redirect</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Slide 6: Cache-Aside -->
+<div class="slide">
+  <h2>Pattern: Cache-Aside (Lazy Loading)</h2>
+  <div class="cols cols-2">
+    <div>
+      <p>Application manages cache explicitly. Cache sits <em>beside</em> the DB, not in front of it transparently.</p>
+      <div class="card" style="margin-top: 16px;">
+        <h3>Cache HIT path</h3>
+        <ul>
+          <li>Redis <code>GET url:{code}</code> → value found</li>
+          <li>Return original URL immediately</li>
+          <li>No DB query — latency &lt; 1ms</li>
+        </ul>
+      </div>
+      <div class="card" style="margin-top: 16px;">
+        <h3>Cache MISS path</h3>
+        <ul>
+          <li>Redis returns null</li>
+          <li>decode <code>code</code> → <code>id</code> via Base62</li>
+          <li>Query PostgreSQL by primary key</li>
+          <li>Store result in Redis with 24h TTL</li>
+          <li>Return original URL</li>
+        </ul>
+      </div>
+      <div class="card" style="margin-top: 16px;">
+        <h3>Why 302 not 301?</h3>
+        <p>301 is cached permanently by browsers. If we ever update or delete a link, the old redirect is stuck in every browser cache forever. 302 re-checks every time.</p>
+      </div>
+    </div>
+    <div>
+      <pre>// ResolveUrlUseCase — Cache-Aside logic
+public String resolve(String code) {
+
+  // Bloom Filter gate
+  if (!bloomFilter.mightContain(code)) {
+    throw new UrlNotFoundException(code);
+  }
+
+  String cacheKey = "url:" + code;
+
+  // Cache-Aside: check cache first
+  return cache.get(cacheKey)
+    .orElseGet(() -> {
+
+      // Cache MISS: decode → DB lookup
+      long id = encoder.decode(code);
+      Url url = urlRepository.findById(id)
+        .orElseThrow(() ->
+          new UrlNotFoundException(code));
+
+      // Populate cache for next request
+      cache.put(cacheKey, url.originalUrl());
+      return url.originalUrl();
+    });
+}</pre>
+    </div>
+  </div>
+</div>
+
+<!-- Slide 7: Hexagonal Architecture -->
+<div class="slide">
+  <h2>Hexagonal Architecture — Layers</h2>
+  <p style="margin-bottom: 24px;">Dependencies always point inward. Domain knows nothing about Spring, Redis, or JPA.</p>
+  <div class="cols cols-2">
+    <div>
+      <div class="arch-layer">
+        <strong style="color: var(--accent);">domain/</strong> — pure Java, zero Spring
+        <ul style="margin-top: 8px; font-size: 0.9rem;">
+          <li>Url, ShortCode — value objects</li>
+          <li>Base62Encoder — domain service</li>
+          <li>UrlRepository, CachePort, BloomFilterPort — ports (interfaces)</li>
+          <li>UrlNotFoundException — domain error</li>
+        </ul>
+      </div>
+      <div class="arch-layer app">
+        <strong style="color: var(--green);">application/</strong> — use cases
+        <ul style="margin-top: 8px; font-size: 0.9rem;">
+          <li>ShortenUrlUseCase — write side</li>
+          <li>ResolveUrlUseCase — read side</li>
+          <li>No @Service, no @Autowired — wired by AppConfig</li>
+        </ul>
+      </div>
+      <div class="arch-layer infra">
+        <strong style="color: var(--yellow);">infrastructure/</strong> — adapters
+        <ul style="margin-top: 8px; font-size: 0.9rem;">
+          <li>JpaUrlRepository — implements UrlRepository</li>
+          <li>RedisCacheAdapter — implements CachePort</li>
+          <li>RedisBloomFilterAdapter — implements BloomFilterPort</li>
+          <li>AppConfig — Spring wiring</li>
+        </ul>
+      </div>
+      <div class="arch-layer api">
+        <strong style="color: var(--purple);">api/</strong> — controllers + DTOs
+        <ul style="margin-top: 8px; font-size: 0.9rem;">
+          <li>UrlShortenerController — @RestController</li>
+          <li>ShortenRequest / ShortenResponse — DTOs</li>
+          <li>GlobalExceptionHandler — 404 mapping</li>
+        </ul>
+      </div>
+    </div>
+    <div>
+      <div class="card">
+        <h3>MVC → Hexagonal mapping</h3>
+        <table style="margin-top: 12px;">
+          <tr><th>MVC name</th><th>Hexagonal name</th></tr>
+          <tr><td>@RestController</td><td>Controller in api/</td></tr>
+          <tr><td>@Service</td><td>UseCase in application/</td></tr>
+          <tr><td>@Repository (interface)</td><td>Port in domain/</td></tr>
+          <tr><td>@Repository (impl)</td><td>Adapter in infrastructure/</td></tr>
+          <tr><td>@Entity</td><td>JPA entity in infrastructure/</td></tr>
+        </table>
+      </div>
+      <div class="card" style="margin-top: 16px;">
+        <h3>Why UseCase not Service?</h3>
+        <p style="margin-top: 8px; font-size: 0.95rem;">One class, one action. <code>ShortenUrlUseCase</code> has one method. No fat service with 10 mixed responsibilities. Easier to test, easier to find bugs.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Slide 8: Key Design Decisions -->
+<div class="slide">
+  <h2>Key Design Decisions</h2>
+  <table>
+    <tr><th>Decision</th><th>Choice</th><th>Why</th></tr>
+    <tr><td>ID strategy</td><td><span class="badge badge-blue">BIGSERIAL auto-increment</span></td><td>No collision; encode/decode via Base62 at runtime</td></tr>
+    <tr><td>ShortCode in DB?</td><td><span class="badge badge-green">No — derived</span></td><td>Saves column + index; computed from ID deterministically</td></tr>
+    <tr><td>Bloom Filter backend</td><td><span class="badge badge-blue">Redis SETBIT/GETBIT</span></td><td>Persistent across restarts; shared across instances; 1.2MB</td></tr>
+    <tr><td>Cache strategy</td><td><span class="badge badge-blue">Cache-Aside</span></td><td>App controls cache explicitly; simple to reason about</td></tr>
+    <tr><td>Cache TTL</td><td><span class="badge badge-yellow">24 hours</span></td><td>Balance between Redis memory and DB hit rate</td></tr>
+    <tr><td>Redirect code</td><td><span class="badge badge-green">302 Found</span></td><td>301 cached permanently by browsers — dangerous for mutable links</td></tr>
+    <tr><td>Encoding alphabet</td><td><span class="badge badge-blue">Base62 (0-9a-zA-Z)</span></td><td>URL-safe; no percent-encoding needed</td></tr>
+  </table>
+</div>
+
+<!-- Slide 9: Running Locally -->
+<div class="slide">
+  <h2>Running Locally</h2>
+  <div class="cols cols-2">
+    <div>
+      <h3 style="margin-bottom: 12px;">Start infrastructure</h3>
+      <pre>docker-compose up -d</pre>
+      <h3 style="margin-top: 20px; margin-bottom: 12px;">Run tests</h3>
+      <pre>JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 \
+  mvn test -f backend/pom.xml</pre>
+      <h3 style="margin-top: 20px; margin-bottom: 12px;">Start service</h3>
+      <pre>JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 \
+  mvn spring-boot:run \
+  -f backend/pom.xml \
+  -pl url-shortener-service</pre>
+    </div>
+    <div>
+      <h3 style="margin-bottom: 12px;">Try it</h3>
+      <pre># Shorten a URL
+curl -X POST http://localhost:8080/api/v1/shorten \
+  -H "Content-Type: application/json" \
+  -d '{"originalUrl":"https://www.google.com"}'
+
+# Response:
+# { "shortCode": "1", "shortUrl": "http://localhost:8080/r/1" }
+
+# Resolve (follow the redirect)
+curl -L http://localhost:8080/r/1
+
+# Swagger UI
+open http://localhost:8080/swagger-ui.html</pre>
+      <div class="card" style="margin-top: 20px;">
+        <h3>AWS Equivalent</h3>
+        <ul>
+          <li>PostgreSQL + BIGSERIAL → DynamoDB Atomic Counter</li>
+          <li>Redis cache → CloudFront edge caching</li>
+          <li>Redis Bloom Filter → ElastiCache</li>
+          <li>Spring Boot → Lambda + API Gateway</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Navigation -->
+<div class="nav">
+  <button onclick="prev()">← Prev</button>
+  <span class="counter" id="counter">1 / 9</span>
+  <button onclick="next()">Next →</button>
+</div>
+
+<script>
+  const slides = document.querySelectorAll('.slide');
+  let current = 0;
+
+  function show(n) {
+    slides[current].classList.remove('active');
+    current = (n + slides.length) % slides.length;
+    slides[current].classList.add('active');
+    document.getElementById('counter').textContent = (current + 1) + ' / ' + slides.length;
+  }
+
+  function next() { show(current + 1); }
+  function prev() { show(current - 1); }
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight' || e.key === ' ') next();
+    if (e.key === 'ArrowLeft') prev();
+  });
+</script>
+</body>
+</html>
