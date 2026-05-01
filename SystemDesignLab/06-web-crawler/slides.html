@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>06 — Web Crawler</title>
+<style>
+  :root {
+    --bg: #0f172a; --surface: #1e293b; --border: #334155;
+    --text: #f1f5f9; --muted: #94a3b8; --accent: #38bdf8;
+    --green: #4ade80; --red: #f87171; --yellow: #fbbf24; --purple: #a78bfa;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; overflow: hidden; }
+  .slide { display: none; width: 100vw; height: 100vh; padding: 56px 72px; flex-direction: column; justify-content: center; }
+  .slide.active { display: flex; }
+  h1 { font-size: 3rem; font-weight: 700; color: var(--accent); line-height: 1.1; }
+  h2 { font-size: 1.9rem; font-weight: 600; color: var(--accent); margin-bottom: 28px; border-bottom: 2px solid var(--border); padding-bottom: 12px; }
+  h3 { font-size: 1.25rem; font-weight: 600; color: var(--yellow); margin-bottom: 10px; }
+  p  { color: var(--muted); font-size: 1.05rem; line-height: 1.7; margin-bottom: 10px; }
+  .tag { display: inline-block; background: var(--surface); border: 1px solid var(--border); color: var(--accent); font-size: 0.8rem; padding: 3px 10px; border-radius: 999px; margin: 3px; }
+  .subtitle { font-size: 1.2rem; color: var(--muted); margin: 16px 0 28px; }
+  .number { font-size: 5rem; font-weight: 800; color: var(--border); position: absolute; top: 40px; right: 72px; }
+  .cols { display: grid; gap: 32px; flex: 1; align-items: start; }
+  .cols-2 { grid-template-columns: 1fr 1fr; }
+  .cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px; }
+  ul { list-style: none; padding: 0; }
+  ul li { color: var(--muted); font-size: 1rem; line-height: 1.8; padding-left: 20px; position: relative; }
+  ul li::before { content: '→'; color: var(--accent); position: absolute; left: 0; }
+  code { background: var(--surface); color: var(--green); padding: 2px 8px; border-radius: 4px; font-family: 'Fira Code', monospace; font-size: 0.95em; }
+  pre { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 20px; font-family: 'Fira Code', monospace; font-size: 0.88rem; color: var(--green); line-height: 1.6; overflow: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
+  th { background: var(--surface); color: var(--accent); padding: 10px 14px; text-align: left; border-bottom: 2px solid var(--border); }
+  td { padding: 9px 14px; border-bottom: 1px solid var(--border); color: var(--muted); }
+  tr:last-child td { border-bottom: none; }
+  .badge { display: inline-block; padding: 3px 12px; border-radius: 999px; font-size: 0.8rem; font-weight: 600; }
+  .badge-green { background: #14532d; color: var(--green); }
+  .badge-blue { background: #0c4a6e; color: var(--accent); }
+  .badge-yellow { background: #451a03; color: var(--yellow); }
+  .flow-box { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 8px 16px; font-size: 0.88rem; color: var(--text); }
+  .flow-box.hl { border-color: var(--accent); color: var(--accent); }
+  .flow-box.green { border-color: var(--green); color: var(--green); }
+  .flow-box.red { border-color: var(--red); color: var(--red); }
+  .flow-box.yellow { border-color: var(--yellow); color: var(--yellow); }
+  .arrow { color: var(--muted); text-align: center; font-size: 1.1rem; margin: 4px 0; }
+  .arch-layer { border-left: 3px solid var(--accent); padding: 10px 18px; margin-bottom: 10px; background: var(--surface); border-radius: 0 8px 8px 0; }
+  .arch-layer.infra { border-color: var(--yellow); }
+  .arch-layer.api { border-color: var(--purple); }
+  .arch-layer.app { border-color: var(--green); }
+  .nav { position: fixed; bottom: 28px; right: 40px; display: flex; gap: 12px; align-items: center; }
+  .nav button { background: var(--surface); border: 1px solid var(--border); color: var(--text); padding: 8px 20px; border-radius: 8px; cursor: pointer; font-size: 0.9rem; }
+  .nav button:hover { border-color: var(--accent); }
+  .nav .counter { color: var(--muted); font-size: 0.85rem; min-width: 50px; text-align: center; }
+</style>
+</head>
+<body>
+
+<!-- Slide 1: Title -->
+<div class="slide active">
+  <div class="number">06</div>
+  <h1>Web Crawler</h1>
+  <p class="subtitle">BFS · Bloom Filter · Politeness Delay · URL Normalisation</p>
+  <div style="margin-top: 8px;">
+    <span class="tag">RabbitMQ</span>
+    <span class="tag">Redis</span>
+    <span class="tag">PostgreSQL</span>
+    <span class="tag">Jsoup</span>
+    <span class="tag">Spring Boot 3.3</span>
+    <span class="tag">Java 21</span>
+  </div>
+  <div style="margin-top: 40px; max-width: 680px;">
+    <p>Starts from seed URLs, fetches pages, extracts links, recursively crawls those links.</p>
+    <p style="margin-top: 10px;">The web is a cyclic directed graph. Every design decision here is about graph traversal at scale.</p>
+  </div>
+</div>
+
+<!-- Slide 2: What is a Web Crawler -->
+<div class="slide">
+  <h2>What is a Web Crawler?</h2>
+  <div class="cols cols-2">
+    <div>
+      <p>Program that browses the web automatically. Start at some pages, read them, find links, follow links, repeat forever.</p>
+      <div class="card" style="margin-top: 16px;">
+        <h3>Analogy</h3>
+        <ul>
+          <li>Get handed one book</li>
+          <li>Read it, note every book it references</li>
+          <li>Fetch all those books</li>
+          <li>Repeat for every new book found</li>
+        </ul>
+        <p style="margin-top: 12px; font-size: 0.9rem;">Library = internet. Books = web pages. References = hyperlinks.</p>
+      </div>
+      <div class="card" style="margin-top: 16px;">
+        <h3>Seed URL</h3>
+        <p style="font-size: 0.95rem;">Starting point. The crawler has no idea where to begin until you give it one.</p>
+        <pre style="margin-top: 8px; font-size: 0.8rem;">seeds = [
+  "https://wikipedia.org",
+  "https://bbc.com",
+  "https://github.com"
+]</pre>
+        <p style="margin-top: 8px; font-size: 0.9rem;">From 3 seeds → hundreds → thousands → millions. The whole web is reachable.</p>
+      </div>
+    </div>
+    <div>
+      <div class="card">
+        <h3>Why it is hard</h3>
+        <ul>
+          <li>Web is a cyclic graph — <code>a→b→a</code> loops forever without deduplication</li>
+          <li>Crawling too fast = DDoS attack on target servers</li>
+          <li>Sites generate infinite URLs dynamically</li>
+          <li>Distributed workers need shared state</li>
+        </ul>
+      </div>
+      <div class="card" style="margin-top: 16px;">
+        <h3>What we build</h3>
+        <ul>
+          <li><strong>BFS traversal</strong> — correct graph algorithm</li>
+          <li><strong>Bloom Filter</strong> — fast URL deduplication</li>
+          <li><strong>Politeness delay</strong> — 1 req/sec per domain</li>
+          <li><strong>URL normalisation</strong> — collapse duplicate URLs</li>
+          <li><strong>RabbitMQ frontier</strong> — distributed work queue</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Slide 3: BFS Algorithm -->
+<div class="slide">
+  <h2>Algorithm: BFS vs DFS</h2>
+  <div class="cols cols-2">
+    <div>
+      <p>The web is a directed graph. BFS processes all neighbours before going deeper.</p>
+      <div class="card" style="margin-top: 16px;">
+        <h3 style="color: var(--green);">BFS — Breadth First ✓</h3>
+        <pre style="font-size: 0.82rem;">Level 0: wikipedia.org
+Level 1: history.com, bbc.com, github.com
+Level 2: archives.gov, reuters.com, ...
+
+→ Important pages found first
+→ Popular = shallow = found early</pre>
+      </div>
+      <div class="card" style="margin-top: 16px;">
+        <h3 style="color: var(--red);">DFS — Depth First ✗</h3>
+        <pre style="font-size: 0.82rem;">wikipedia.org
+  → history.com
+    → archives.gov
+      → deeper...
+        → even deeper...
+          (1000 obscure pages before touching bbc.com)</pre>
+        <p style="margin-top: 8px; font-size: 0.9rem;">Risk: dive deep into a crawler trap before visiting important pages.</p>
+      </div>
+    </div>
+    <div>
+      <h3 style="margin-bottom: 12px;">BFS pseudocode</h3>
+      <pre>frontier = Queue([seed_urls])
+seen     = BloomFilter()
+
+while frontier not empty:
+  url = frontier.dequeue()
+
+  if seen.mightContain(url):
+    continue          // already visited
+
+  seen.add(url)
+
+  html = fetch(url)   // HTTP GET
+  links = extract(html)
+
+  for link in links:
+    norm = normalise(link)
+    if not seen.mightContain(norm):
+      seen.add(norm)
+      frontier.enqueue(norm)
+
+  store(url, html)    // save to DB</pre>
+    </div>
+  </div>
+</div>
+
+<!-- Slide 4: Politeness + Traps -->
+<div class="slide">
+  <h2>Politeness Delay + Crawler Traps</h2>
+  <div class="cols cols-2">
+    <div>
+      <div class="card">
+        <h3>Politeness Delay</h3>
+        <p style="font-size: 0.95rem;">Crawling <code>bbc.com</code> with 1000 concurrent threads = DDoS attack. Real crawlers enforce a per-domain delay.</p>
+        <pre style="margin-top: 12px; font-size: 0.82rem;">// After fetching bbc.com/news:
+SET crawl:lock:bbc.com "" EX 1
+// key expires in 1 second
+
+// Next bbc.com URL dequeued:
+EXISTS crawl:lock:bbc.com → true
+→ re-enqueue, skip for now</pre>
+        <p style="margin-top: 8px; font-size: 0.9rem;">Redis TTL = automatic expiry. No cron job needed.</p>
+      </div>
+    </div>
+    <div>
+      <div class="card">
+        <h3>Crawler Traps</h3>
+        <p style="font-size: 0.95rem;">Sites that generate infinite unique URLs:</p>
+        <pre style="margin-top: 8px; font-size: 0.82rem;">// Session ID trap
+/news?session=abc123
+/news?session=def456   ← same page, different URL
+
+// Calendar trap
+/calendar/2024/01
+/calendar/2024/02
+...
+/calendar/9999/12      ← infinite
+
+// Tracking params
+/article?utm_source=twitter
+/article?utm_source=facebook  ← same page</pre>
+      </div>
+      <div class="card" style="margin-top: 16px;">
+        <h3>URL Normalisation fixes traps</h3>
+        <ul>
+          <li>Lowercase scheme + host</li>
+          <li>Strip URL fragment (<code>#section</code>)</li>
+          <li>Strip tracking params (<code>utm_*</code>, <code>fbclid</code>)</li>
+          <li>Max depth = 3 hops from seed</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Slide 5: RabbitMQ vs Kafka -->
+<div class="slide">
+  <h2>Why RabbitMQ, not Kafka?</h2>
+  <div class="cols cols-2">
+    <div>
+      <table>
+        <tr><th>Feature</th><th>Kafka</th><th>RabbitMQ</th></tr>
+        <tr><td>Message replay</td><td>✅ Yes</td><td>❌ No</td></tr>
+        <tr><td>Message ordering</td><td>✅ Per partition</td><td>Approximate</td></tr>
+        <tr><td>Retention</td><td>Days/weeks</td><td>Until consumed</td></tr>
+        <tr><td>Throughput</td><td>Millions/sec</td><td>Thousands/sec</td></tr>
+        <tr><td>Complexity</td><td>High</td><td>Low</td></tr>
+        <tr><td>Use case</td><td>Event sourcing, audit log</td><td>Work queue</td></tr>
+      </table>
+      <div class="card" style="margin-top: 20px;">
+        <h3>URL Frontier needs:</h3>
+        <ul>
+          <li>URL in → one worker picks it up → done → discard</li>
+          <li>Retry on worker crash (Dead Letter Queue)</li>
+          <li>No replay of "all URLs crawled last Tuesday"</li>
+          <li>No strict ordering needed</li>
+        </ul>
+      </div>
+    </div>
+    <div>
+      <div class="card">
+        <h3>That is a Work Queue</h3>
+        <p>RabbitMQ is purpose-built for exactly this. One URL processed by exactly one worker. ACK on success. NACK on failure → DLQ.</p>
+      </div>
+      <div class="card" style="margin-top: 16px;">
+        <h3>Analogy</h3>
+        <p>Kafka = freight train. Great for large volumes with guaranteed delivery history.</p>
+        <p style="margin-top: 8px;">RabbitMQ = delivery van. Gets the package there. Once delivered, it is gone.</p>
+        <p style="margin-top: 8px; color: var(--yellow);">Using Kafka here = freight train to deliver one pizza.</p>
+      </div>
+      <div class="card" style="margin-top: 16px;">
+        <h3>Use Kafka in this lab for:</h3>
+        <ul>
+          <li>Project 09 — Bank: Event Sourcing (must replay)</li>
+          <li>Project 10 — News Feed: stream processing</li>
+          <li>Project 11 — Twitter: audit log + fan-out</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Slide 6: System Flow -->
+<div class="slide">
+  <h2>System Flow: Crawl One URL</h2>
+  <div class="cols cols-2">
+    <div>
+      <h3 style="margin-bottom: 12px;">Submit Seeds (write path)</h3>
+      <div style="display: flex; flex-direction: column; gap: 6px;">
+        <div class="flow-box hl">POST /api/v1/seeds</div>
+        <div class="arrow">↓</div>
+        <div class="flow-box">SubmitSeedUseCase</div>
+        <div class="arrow">↓</div>
+        <div class="flow-box">SeenFilter: mightContain?</div>
+        <div style="display: flex; gap: 16px; padding-left: 16px;">
+          <div style="display: flex; flex-direction: column; gap: 4px; align-items: center;">
+            <span style="color: var(--red); font-size: 0.8rem;">seen</span>
+            <div class="flow-box red">skip</div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 4px; align-items: center;">
+            <span style="color: var(--green); font-size: 0.8rem;">unseen</span>
+            <div class="flow-box green">add + enqueue</div>
+          </div>
+        </div>
+        <div class="arrow">↓</div>
+        <div class="flow-box yellow">RabbitMQ frontier queue</div>
+      </div>
+    </div>
+    <div>
+      <h3 style="margin-bottom: 12px;">Process URL (consumer path)</h3>
+      <div style="display: flex; flex-direction: column; gap: 6px;">
+        <div class="flow-box yellow">RabbitMQ delivers CrawlUrl</div>
+        <div class="arrow">↓</div>
+        <div class="flow-box">PolitenessPort: domain locked?</div>
+        <div style="display: flex; gap: 16px; padding-left: 16px;">
+          <div style="display: flex; flex-direction: column; gap: 4px; align-items: center;">
+            <span style="color: var(--red); font-size: 0.8rem;">locked</span>
+            <div class="flow-box red">re-enqueue</div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 4px; align-items: center;">
+            <span style="color: var(--green); font-size: 0.8rem;">free</span>
+            <div class="flow-box">lock domain (1s TTL)</div>
+          </div>
+        </div>
+        <div class="arrow">↓</div>
+        <div class="flow-box">PageFetcherPort: HTTP GET</div>
+        <div class="arrow">↓</div>
+        <div class="flow-box">LinkExtractor → UrlNormaliser</div>
+        <div class="arrow">↓</div>
+        <div class="flow-box">unseen links → SeenFilter + queue</div>
+        <div class="arrow">↓</div>
+        <div class="flow-box green">PageRepository: save to DB</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Slide 7: Hexagonal Architecture -->
+<div class="slide">
+  <h2>Hexagonal Architecture</h2>
+  <p style="margin-bottom: 20px;">Same pattern as project 05. Domain knows nothing about Spring, Redis, RabbitMQ, or HTTP.</p>
+  <div class="cols cols-2">
+    <div>
+      <div class="arch-layer">
+        <strong style="color: var(--accent);">domain/</strong> — pure Java
+        <ul style="margin-top: 8px; font-size: 0.88rem;">
+          <li>CrawlUrl, Domain, CrawlPage — value objects</li>
+          <li>UrlNormaliser, LinkExtractor — domain services</li>
+          <li>5 ports: SeenFilterPort, UrlQueuePort, PolitenessPort, PageFetcherPort, PageRepository</li>
+        </ul>
+      </div>
+      <div class="arch-layer app">
+        <strong style="color: var(--green);">application/</strong>
+        <ul style="margin-top: 8px; font-size: 0.88rem;">
+          <li>SubmitSeedUseCase — accepts seeds from API</li>
+          <li>CrawlUrlUseCase — processes one URL from queue</li>
+        </ul>
+      </div>
+      <div class="arch-layer infra">
+        <strong style="color: var(--yellow);">infrastructure/</strong>
+        <ul style="margin-top: 8px; font-size: 0.88rem;">
+          <li>JpaPageRepository — PostgreSQL</li>
+          <li>RedisSeenFilter — Bloom Filter</li>
+          <li>RabbitMqUrlQueue — publish + @RabbitListener consumer</li>
+          <li>RedisPolitenessAdapter — SET EX / EXISTS</li>
+          <li>HttpPageFetcher — RestTemplate</li>
+        </ul>
+      </div>
+      <div class="arch-layer api">
+        <strong style="color: var(--purple);">api/</strong>
+        <ul style="margin-top: 8px; font-size: 0.88rem;">
+          <li>CrawlerController — POST /seeds, GET /status</li>
+        </ul>
+      </div>
+    </div>
+    <div>
+      <div class="card">
+        <h3>New concept: @RabbitListener</h3>
+        <p style="font-size: 0.95rem; margin-top: 8px;">In project 05, the use case was called directly by the controller. Here, <code>CrawlUrlUseCase</code> is also triggered by RabbitMQ messages — Spring calls it automatically when a URL arrives in the queue.</p>
+        <pre style="margin-top: 12px; font-size: 0.82rem;">// Infrastructure adapter wires
+// use case to RabbitMQ consumer
+@RabbitListener(queues = "url.frontier")
+public void onMessage(CrawlUrl crawlUrl) {
+    crawlUrlUseCase.crawl(crawlUrl);
+}</pre>
+        <p style="margin-top: 8px; font-size: 0.9rem;">Use case itself has no RabbitMQ imports. Spring wiring in infrastructure only.</p>
+      </div>
+      <div class="card" style="margin-top: 16px;">
+        <h3>5 ports vs 2 in project 05</h3>
+        <p style="font-size: 0.95rem; margin-top: 8px;">More ports = more moving parts = more opportunities to learn the pattern. Each port can be swapped independently — e.g. replace Redis Bloom Filter with Guava in-memory for tests.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Slide 8: Key Design Decisions -->
+<div class="slide">
+  <h2>Key Design Decisions</h2>
+  <table>
+    <tr><th>Decision</th><th>Choice</th><th>Why</th></tr>
+    <tr><td>Traversal</td><td><span class="badge badge-blue">BFS</span></td><td>Finds important pages first; DFS risks trap dive</td></tr>
+    <tr><td>URL dedup</td><td><span class="badge badge-blue">Bloom Filter (Redis)</span></td><td>O(1) probabilistic; shared across workers; 1.2MB</td></tr>
+    <tr><td>Work queue</td><td><span class="badge badge-blue">RabbitMQ</span></td><td>Work queue pattern; no replay needed; simpler than Kafka</td></tr>
+    <tr><td>Politeness</td><td><span class="badge badge-blue">Redis SET EX</span></td><td>Per-domain TTL lock; atomic, expires automatically</td></tr>
+    <tr><td>HTML parsing</td><td><span class="badge badge-blue">Jsoup</span></td><td>Purpose-built; handles malformed HTML gracefully</td></tr>
+    <tr><td>Max depth</td><td><span class="badge badge-yellow">3 hops</span></td><td>Prevents traps; configurable via application.yml</td></tr>
+    <tr><td>URL normalise</td><td><span class="badge badge-green">strip fragment + tracking</span></td><td>Collapse duplicate URLs before Bloom Filter check</td></tr>
+  </table>
+</div>
+
+<!-- Slide 9: Running Locally -->
+<div class="slide">
+  <h2>Running Locally</h2>
+  <div class="cols cols-2">
+    <div>
+      <h3 style="margin-bottom: 12px;">Start infrastructure</h3>
+      <pre>docker-compose up -d
+
+# RabbitMQ management UI:
+open http://localhost:15672
+# login: guest / guest</pre>
+      <h3 style="margin-top: 20px; margin-bottom: 12px;">Run tests</h3>
+      <pre>JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 \
+  mvn test -f backend/pom.xml</pre>
+      <h3 style="margin-top: 20px; margin-bottom: 12px;">Start service</h3>
+      <pre>JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 \
+  mvn spring-boot:run \
+  -f backend/pom.xml \
+  -pl web-crawler-service</pre>
+    </div>
+    <div>
+      <h3 style="margin-bottom: 12px;">Try it</h3>
+      <pre># Submit seed URLs
+curl -X POST http://localhost:8080/api/v1/seeds \
+  -H "Content-Type: application/json" \
+  -d '{"urls":["https://wikipedia.org"]}'
+
+# Check crawl status
+curl http://localhost:8080/api/v1/status
+
+# Response:
+# { "pagesCrawled": 42, "queueDepth": 318 }</pre>
+      <div class="card" style="margin-top: 20px;">
+        <h3>AWS Equivalent</h3>
+        <ul>
+          <li>RabbitMQ → SQS standard queue</li>
+          <li>CrawlUrlUseCase → Lambda triggered by SQS</li>
+          <li>PostgreSQL → S3 (HTML) + DynamoDB (metadata)</li>
+          <li>Redis Bloom Filter → ElastiCache</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="nav">
+  <button onclick="prev()">← Prev</button>
+  <span class="counter" id="counter">1 / 9</span>
+  <button onclick="next()">Next →</button>
+</div>
+
+<script>
+  const slides = document.querySelectorAll('.slide');
+  let current = 0;
+  function show(n) {
+    slides[current].classList.remove('active');
+    current = (n + slides.length) % slides.length;
+    slides[current].classList.add('active');
+    document.getElementById('counter').textContent = (current + 1) + ' / ' + slides.length;
+  }
+  function next() { show(current + 1); }
+  function prev() { show(current - 1); }
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight' || e.key === ' ') next();
+    if (e.key === 'ArrowLeft') prev();
+  });
+</script>
+</body>
+</html>
