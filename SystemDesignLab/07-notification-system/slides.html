@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>07 — Notification System</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', sans-serif; background: #0f172a; color: #e2e8f0; }
+  .slide { display: none; width: 100vw; min-height: 100vh; padding: 60px 80px; flex-direction: column; justify-content: center; }
+  .slide.active { display: flex; }
+  .nav { position: fixed; bottom: 24px; right: 32px; display: flex; align-items: center; gap: 12px; z-index: 100; }
+  .nav button { background: #1e293b; color: #e2e8f0; border: 1px solid #334155; padding: 8px 20px; border-radius: 8px; cursor: pointer; font-size: 0.95rem; }
+  .nav button:hover { background: #334155; }
+  .counter { color: #64748b; font-size: 0.9rem; min-width: 52px; text-align: center; }
+  h1 { font-size: 2.8rem; color: #f8fafc; margin-bottom: 12px; }
+  h2 { font-size: 2rem; color: #7dd3fc; margin-bottom: 24px; }
+  h3 { font-size: 1.2rem; color: #94a3b8; margin-bottom: 16px; text-transform: uppercase; letter-spacing: 1px; }
+  p  { font-size: 1.1rem; color: #cbd5e1; line-height: 1.7; max-width: 820px; margin-bottom: 16px; }
+  ul { padding-left: 24px; margin-bottom: 16px; }
+  li { font-size: 1.05rem; color: #cbd5e1; line-height: 1.8; }
+  li strong { color: #f8fafc; }
+  code { background: #1e293b; color: #7dd3fc; padding: 2px 8px; border-radius: 4px; font-size: 0.95em; }
+  pre  { background: #1e293b; border-left: 4px solid #7dd3fc; padding: 24px; border-radius: 8px; font-size: 0.95rem; line-height: 1.6; overflow-x: auto; margin-bottom: 20px; color: #e2e8f0; }
+  .tag { display: inline-block; background: #1e40af; color: #bfdbfe; padding: 4px 14px; border-radius: 20px; font-size: 0.85rem; margin-right: 8px; margin-bottom: 8px; }
+  .tag.green { background: #065f46; color: #a7f3d0; }
+  .tag.purple { background: #4c1d95; color: #ddd6fe; }
+  .tag.red { background: #7f1d1d; color: #fecaca; }
+  table { border-collapse: collapse; width: 100%; max-width: 900px; margin-bottom: 20px; }
+  th { background: #1e293b; color: #7dd3fc; padding: 12px 16px; text-align: left; font-size: 0.9rem; text-transform: uppercase; }
+  td { padding: 12px 16px; border-bottom: 1px solid #1e293b; font-size: 1rem; color: #cbd5e1; }
+  td code { font-size: 0.9rem; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; max-width: 1000px; }
+  .card { background: #1e293b; border-radius: 12px; padding: 28px; }
+  .card h3 { color: #7dd3fc; margin-bottom: 12px; font-size: 1rem; }
+  .number { font-size: 4rem; font-weight: 700; color: #1e40af; opacity: 0.3; position: absolute; right: 80px; top: 60px; }
+  .slide { position: relative; }
+  .lane { display: flex; gap: 32px; max-width: 900px; margin-bottom: 20px; }
+  .lane-box { flex: 1; border-radius: 10px; padding: 20px; }
+  .lane-box.critical { background: #450a0a; border: 1px solid #ef4444; }
+  .lane-box.bulk { background: #0c1a0c; border: 1px solid #22c55e; }
+  .lane-box h3 { margin-bottom: 10px; }
+  .lane-box.critical h3 { color: #f87171; }
+  .lane-box.bulk h3 { color: #4ade80; }
+</style>
+</head>
+<body>
+
+<!-- Slide 1: Title -->
+<div class="slide active">
+  <div class="number">07</div>
+  <h3>System Design Lab</h3>
+  <h1>Notification System</h1>
+  <p>Fan-out on write · Priority queues · Strategy pattern · Idempotency</p>
+  <br/>
+  <div>
+    <span class="tag">Fan-out</span>
+    <span class="tag green">Priority Queues</span>
+    <span class="tag purple">Strategy Pattern</span>
+    <span class="tag red">Idempotency</span>
+    <span class="tag">RabbitMQ</span>
+    <span class="tag green">WireMock</span>
+  </div>
+</div>
+
+<!-- Slide 2: What Is It -->
+<div class="slide">
+  <div class="number">1</div>
+  <h2>What Is a Notification System?</h2>
+  <p>Delivers messages from your app to users across channels. Every production app has one.</p>
+  <div class="grid">
+    <div class="card">
+      <h3>Transactional</h3>
+      <ul>
+        <li>OTP / 2FA codes</li>
+        <li>Password reset links</li>
+        <li>Order shipped alerts</li>
+        <li>Payment confirmations</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Marketing / Bulk</h3>
+      <ul>
+        <li>Weekly digest emails</li>
+        <li>Promotional SMS</li>
+        <li>Feature announcements</li>
+        <li>Re-engagement campaigns</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Channels we build</h3>
+      <ul>
+        <li><strong>Email</strong> — WireMock simulates SendGrid</li>
+        <li><strong>SMS</strong> — WireMock simulates Twilio</li>
+        <li><strong>In-App</strong> — stored in PostgreSQL, polled</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>What makes it hard</h3>
+      <ul>
+        <li>Fan-out explosion (1M recipients)</li>
+        <li>Priority inversion (OTP vs marketing)</li>
+        <li>Provider rate limits</li>
+        <li>Double delivery on retry</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- Slide 3: The Core Problem -->
+<div class="slide">
+  <div class="number">2</div>
+  <h2>The Core Problem</h2>
+  <p>Send 1 OTP in &lt; 1s AND send 1 marketing email to 1M users — without one blocking the other.</p>
+  <pre>
+❌ Naive approach — synchronous in request thread:
+
+POST /send → for each recipient → call SendGrid → wait → next
+           → 1M users × 200ms = 55 hours to send a "campaign"
+           → OTP queued behind bulk emails → user waits → gives up
+
+✅ Our approach — async, two-lane:
+
+POST /send → fan-out tasks → route by priority
+  CRITICAL lane → fast consumer → sent in &lt; 1s
+  BULK lane     → rate-limited consumer → sent over hours
+                → never blocks CRITICAL</pre>
+</div>
+
+<!-- Slide 4: Fan-out on Write -->
+<div class="slide">
+  <div class="number">3</div>
+  <h2>Fan-out on Write</h2>
+  <p>One send event → one <code>NotificationTask</code> per recipient, enqueued immediately at write time.</p>
+  <pre>
+SendNotification(type=ORDER_SHIPPED, recipients=[A, B, C], channel=EMAIL)
+        ↓
+check preferences: A=active, B=opted-out, C=active
+        ↓
+fan-out → Task(A, EMAIL)   Task(C, EMAIL)
+              ↓                   ↓
+          enqueue             enqueue        ← B skipped
+              ↓                   ↓
+         worker picks up → sends email</pre>
+  <p><strong>Why not fan-out on read?</strong> Fan-out on read defers work to query time — good for social feeds (project 10) where delivery SLA doesn't matter. For notifications, tasks must enter the queue NOW so workers start immediately.</p>
+</div>
+
+<!-- Slide 5: Priority Queues -->
+<div class="slide">
+  <div class="number">4</div>
+  <h2>Two-Lane Priority Queue</h2>
+  <p>Separate queues = separate consumers = CRITICAL never waits behind BULK.</p>
+  <div class="lane">
+    <div class="lane-box critical">
+      <h3>CRITICAL lane</h3>
+      <ul>
+        <li>Queue: <code>notifications.critical</code></li>
+        <li>OTP codes, password reset</li>
+        <li>Payment alerts</li>
+        <li>Dedicated consumer, no batching</li>
+        <li>Target: delivered &lt; 1s</li>
+      </ul>
+    </div>
+    <div class="lane-box bulk">
+      <h3>BULK lane</h3>
+      <ul>
+        <li>Queue: <code>notifications.bulk</code></li>
+        <li>Marketing, newsletters</li>
+        <li>Weekly digests</li>
+        <li>Rate-limited consumer</li>
+        <li>Target: delivered within hours</li>
+      </ul>
+    </div>
+  </div>
+  <p>RabbitMQ work queue — no replay needed. Failed tasks go to DLQ for inspection.</p>
+</div>
+
+<!-- Slide 6: Strategy Pattern (Channels) -->
+<div class="slide">
+  <div class="number">5</div>
+  <h2>Strategy Pattern — Channels</h2>
+  <p>Each delivery channel is a <code>ChannelPort</code> implementation. Use case selects strategy at runtime.</p>
+  <pre>
+interface ChannelPort {
+    void send(NotificationTask task);
+    boolean supports(Channel channel);
+}
+
+EmailChannelAdapter  implements ChannelPort → POST to WireMock /email
+SmsChannelAdapter    implements ChannelPort → POST to WireMock /sms
+InAppChannelAdapter  implements ChannelPort → INSERT into PostgreSQL
+
+// ProcessNotificationTaskUseCase:
+channelPorts.stream()
+    .filter(p -> p.supports(task.channel()))
+    .findFirst()
+    .orElseThrow()
+    .send(task);</pre>
+  <p>Adding a new channel (e.g. push notifications) = new adapter + register in AppConfig. Zero changes to use case.</p>
+</div>
+
+<!-- Slide 7: Idempotency -->
+<div class="slide">
+  <div class="number">6</div>
+  <h2>Idempotency — No Double Delivery</h2>
+  <p>RabbitMQ retries on failure. Without a guard, the user gets 2 OTPs.</p>
+  <pre>
+// Each NotificationTask has a UUID:
+record NotificationTask(UUID notificationId, String recipientId, Channel channel, ...)
+
+// Worker checks before sending:
+if (notificationRepository.existsSent(task.notificationId())) {
+    return;  // already delivered — ACK and skip
+}
+channelPort.send(task);
+notificationRepository.updateStatus(task.notificationId(), SENT);
+
+// Scenario: worker crashes after send, before ACK
+// RabbitMQ redelivers → existsSent() = true → skip → safe</pre>
+  <p><strong>Trade-off:</strong> tiny window where crash-after-send but before DB update causes a duplicate. Acceptable for notifications (not financial transactions).</p>
+</div>
+
+<!-- Slide 8: Full Architecture -->
+<div class="slide">
+  <div class="number">7</div>
+  <h2>Full Architecture</h2>
+  <table>
+    <tr><th>Layer</th><th>Class</th><th>Responsibility</th></tr>
+    <tr><td>API</td><td><code>NotificationController</code></td><td>POST /send, PUT /preferences, GET /inbox</td></tr>
+    <tr><td>Application</td><td><code>SendNotificationUseCase</code></td><td>preference check → fan-out → enqueue</td></tr>
+    <tr><td>Application</td><td><code>ProcessNotificationTaskUseCase</code></td><td>idempotency check → dispatch to channel</td></tr>
+    <tr><td>Domain</td><td><code>FanOutService</code></td><td>builds one task per active recipient</td></tr>
+    <tr><td>Domain</td><td><code>Notification</code>, <code>NotificationTask</code></td><td>immutable records</td></tr>
+    <tr><td>Domain</td><td><code>ChannelPort</code>, <code>TaskQueuePort</code></td><td>ports (interfaces)</td></tr>
+    <tr><td>Infra</td><td><code>RabbitMqTaskQueue</code></td><td>routes to critical or bulk queue</td></tr>
+    <tr><td>Infra</td><td><code>Email/Sms/InAppChannelAdapter</code></td><td>delivery strategies</td></tr>
+    <tr><td>Infra</td><td><code>JpaNotificationRepository</code></td><td>persists status, idempotency check</td></tr>
+  </table>
+</div>
+
+<!-- Slide 9: Running -->
+<div class="slide">
+  <div class="number">8</div>
+  <h2>Running Locally</h2>
+  <pre>
+# Start infrastructure
+docker-compose up -d
+
+# Run tests
+JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 mvn test -f backend/pom.xml
+
+# Run service (port 8082)
+JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 mvn spring-boot:run \
+  -f backend/pom.xml -pl notification-service
+
+# Send CRITICAL notification (OTP)
+curl -X POST http://localhost:8082/api/v1/notifications/send \
+  -H "Content-Type: application/json" \
+  -d '{"type":"OTP","recipients":["user-1"],"channel":"EMAIL","priority":"CRITICAL","payload":"Your OTP is 847291"}'
+
+# Send BULK notification
+curl -X POST http://localhost:8082/api/v1/notifications/send \
+  -H "Content-Type: application/json" \
+  -d '{"type":"PROMO","recipients":["user-1","user-2"],"channel":"SMS","priority":"BULK","payload":"50% off today!"}'
+
+# Opt out
+curl -X PUT http://localhost:8082/api/v1/preferences/user-1 \
+  -H "Content-Type: application/json" \
+  -d '{"channel":"SMS","optedOut":true}'
+
+# In-app inbox
+curl http://localhost:8082/api/v1/notifications/inbox/user-1</pre>
+</div>
+
+
+<!-- Architecture Diagram Slide -->
+<div class="slide">
+  <div class="number">9</div>
+  <h2>Architecture Diagram</h2>
+  <p>Full system view — components, data flows, and design decisions</p>
+  <img src="architecture.jpg" style="max-width:100%;max-height:72vh;object-fit:contain;border-radius:10px;border:1px solid #1e293b;margin-top:16px;" alt="Architecture Diagram"/>
+</div>
+
+
+<div class="nav">
+  <button onclick="prev()">← Prev</button>
+  <span class="counter" id="counter">1 / 10</span>
+  <button onclick="next()">Next →</button>
+</div>
+
+<script>
+  const slides = document.querySelectorAll('.slide');
+  let current = 0;
+  function show(n) {
+    slides[current].classList.remove('active');
+    current = (n + slides.length) % slides.length;
+    slides[current].classList.add('active');
+    document.getElementById('counter').textContent = (current + 1) + ' / ' + slides.length;
+  }
+  function next() { show(current + 1); }
+  function prev() { show(current - 1); }
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); next(); }
+    if (e.key === 'ArrowLeft') { e.preventDefault(); prev(); }
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+{
+  "mappings": [
+    {
+      "request": { "method": "POST", "url": "/v3/mail/send" },
+      "response": { "status": 202, "body": "{\"message\":\"accepted\"}", "headers": {"Content-Type": "application/json"} }
+    },
+    {
+      "request": { "method": "POST", "url": "/v1/messages" },
+      "response": { "status": 201, "body": "{\"sid\":\"SM123\",\"status\":\"queued\"}", "headers": {"Content-Type": "application/json"} }
+    }
+  ]
+}
