@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>08 — Flight Aggregator</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0f1117; color: #e2e8f0; height: 100vh; overflow: hidden; }
+
+  .slideshow { width: 100%; height: 100vh; position: relative; }
+  .slide { display: none; width: 100%; height: 100vh; flex-direction: column; justify-content: flex-start; align-items: center; padding: 48px 64px; overflow-y: auto; }
+  .slide.active { display: flex; }
+
+  h1 { font-size: 2.4rem; font-weight: 700; color: #60a5fa; margin-bottom: 8px; text-align: center; }
+  h2 { font-size: 1.6rem; font-weight: 600; color: #93c5fd; margin-bottom: 24px; text-align: center; }
+  h3 { font-size: 1.1rem; font-weight: 600; color: #7dd3fc; margin: 20px 0 10px; }
+  p  { color: #cbd5e1; line-height: 1.7; margin-bottom: 12px; max-width: 860px; text-align: center; }
+
+  .subtitle { font-size: 1.1rem; color: #94a3b8; margin-bottom: 32px; text-align: center; }
+  .tag { display: inline-block; background: #1e3a5f; color: #60a5fa; border: 1px solid #2563eb; border-radius: 6px; padding: 4px 12px; margin: 4px; font-size: 0.85rem; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; width: 100%; max-width: 1000px; margin-top: 16px; }
+  .card { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 20px; }
+  .card h3 { margin-top: 0; }
+  .card p { text-align: left; font-size: 0.9rem; }
+
+  .flow { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 24px 32px; max-width: 900px; width: 100%; margin-top: 16px; }
+  .flow pre { color: #94a3b8; font-size: 0.9rem; line-height: 1.8; white-space: pre-wrap; }
+
+  table { border-collapse: collapse; width: 100%; max-width: 900px; margin-top: 16px; font-size: 0.9rem; }
+  th { background: #1e3a5f; color: #60a5fa; padding: 10px 16px; text-align: left; border: 1px solid #334155; }
+  td { padding: 9px 16px; border: 1px solid #1e293b; color: #cbd5e1; vertical-align: top; }
+  tr:nth-child(even) td { background: #1a2332; }
+
+  .arch-img { max-width: 960px; width: 100%; border-radius: 12px; border: 1px solid #334155; margin-top: 16px; }
+
+  .saga-step { display: flex; align-items: center; gap: 12px; margin: 8px 0; }
+  .saga-step .event { background: #1e3a5f; color: #60a5fa; border: 1px solid #2563eb; border-radius: 6px; padding: 4px 10px; font-size: 0.82rem; font-family: monospace; white-space: nowrap; }
+  .saga-step .handler { background: #1a2e1a; color: #86efac; border: 1px solid #166534; border-radius: 6px; padding: 4px 10px; font-size: 0.82rem; font-family: monospace; white-space: nowrap; }
+  .saga-step .arrow { color: #475569; font-size: 1.1rem; }
+  .saga-step .outcome { color: #94a3b8; font-size: 0.82rem; }
+
+  nav { position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 16px; background: #1e293b; border: 1px solid #334155; border-radius: 40px; padding: 10px 24px; z-index: 100; }
+  nav button { background: none; border: none; color: #94a3b8; font-size: 1.1rem; cursor: pointer; padding: 4px 10px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  nav button:hover { color: #60a5fa; background: #1e3a5f; }
+  nav button:disabled { color: #334155; cursor: default; background: none; }
+  #counter { color: #64748b; font-size: 0.85rem; min-width: 56px; text-align: center; }
+</style>
+</head>
+<body>
+<div class="slideshow">
+
+  <!-- Slide 1: Title -->
+  <div class="slide active">
+    <h1>08 — Flight Aggregator</h1>
+    <p class="subtitle">Scatter-Gather · Circuit Breaker · Cache-Aside · Outbox · Choreography Saga</p>
+    <div style="margin:24px 0">
+      <span class="tag">Spring Boot 3.3</span>
+      <span class="tag">Java 21</span>
+      <span class="tag">Kafka</span>
+      <span class="tag">Redis</span>
+      <span class="tag">PostgreSQL</span>
+      <span class="tag">resilience4j</span>
+      <span class="tag">WireMock</span>
+    </div>
+    <p>A flight aggregator queries 3 airline APIs in parallel, merges results within a 1.5s deadline, and books flights via a distributed Choreography Saga with Outbox-guaranteed event delivery.</p>
+    <p><strong style="color:#f59e0b">Core challenge:</strong> return results even if a provider is slow or down, and book a flight reliably across distributed steps that can each fail independently.</p>
+  </div>
+
+  <!-- Slide 2: Architecture Diagram -->
+  <div class="slide">
+    <h2>Architecture</h2>
+    <img src="architecture.jpg" alt="Architecture diagram" class="arch-img" onerror="this.style.display='none'">
+  </div>
+
+  <!-- Slide 3: Search — Scatter-Gather + Circuit Breaker -->
+  <div class="slide">
+    <h2>Search: Scatter-Gather + Circuit Breaker</h2>
+    <div class="flow">
+      <pre>
+SearchFlightsUseCase.search(origin, dest, date)
+  │
+  ├─ cache.get(key)  ──── HIT ──────────────────────────────► return cached
+  │                   MISS ↓
+  ├─ CompletableFuture.supplyAsync(ProviderA::search)  ┐
+  ├─ CompletableFuture.supplyAsync(ProviderB::search)  ├─ parallel
+  ├─ CompletableFuture.supplyAsync(ProviderC::search)  ┘
+  │                   wait max 1.5s
+  │
+  │  ProviderA → OK (120ms)  → 4 flights
+  │  ProviderB → CB OPEN    → empty (fail-fast, no wait)
+  │  ProviderC → OK (800ms) → 3 flights
+  │
+  └─ merge → cache 30s → return 7 flights
+      </pre>
+    </div>
+    <div class="grid" style="margin-top:20px">
+      <div class="card">
+        <h3>Circuit Breaker States</h3>
+        <p><strong style="color:#86efac">CLOSED</strong> — calls go through normally</p>
+        <p><strong style="color:#f87171">OPEN</strong> — fail-fast, skip provider (no HTTP call)</p>
+        <p><strong style="color:#fbbf24">HALF_OPEN</strong> — probe one call, re-close if ok</p>
+      </div>
+      <div class="card">
+        <h3>Why Cache-Aside?</h3>
+        <p>Flight prices change every few minutes. 30s TTL balances freshness vs provider load. Popular routes (LHR→JFK) served from Redis without hitting providers again.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Slide 4: Outbox Pattern -->
+  <div class="slide">
+    <h2>Outbox Pattern</h2>
+    <p>Atomically write booking + event in one DB transaction. Poller publishes to Kafka. No dual-write risk.</p>
+    <div class="flow">
+      <pre>
+CreateBookingUseCase.book(flightId, userId)
+  │
+  └─ @Transactional ────────────────────────────────────────┐
+     │  INSERT INTO bookings (id, status=PENDING, ...)      │
+     │  INSERT INTO outbox_events                           │
+     │         (aggregate_id, event_type=BOOKING_CREATED,   │
+     │          payload=JSON, published=false)              │
+     └─────────────────────────────────────────────────────-┘
+         │
+         ▼ (async, every 1s)
+     OutboxPoller  (@Scheduled every 1s)
+       SELECT * FROM outbox_events WHERE published = false
+         │
+         ├─ kafka.send("flight.booking.events", event).get()   ← await broker ack
+         │     on success → markPublished(event.id)            ← only after ack
+         │     on exception → log warn, leave published=false  ← retry next tick
+         └─ at-least-once delivery guaranteed
+
+Why not just publish directly to Kafka in the use case?
+  If Kafka is down at commit time → booking saved but event lost forever.
+  Outbox decouples DB commit from Kafka availability.
+      </pre>
+    </div>
+  </div>
+
+  <!-- Slide 5: Choreography Saga -->
+  <div class="slide">
+    <h2>Choreography Saga</h2>
+    <p>Each step consumes a Kafka event, performs work, updates booking state, publishes the next event. No central coordinator.</p>
+    <div style="max-width:860px; width:100%; margin-top:16px">
+      <div class="saga-step">
+        <span class="event">BOOKING_CREATED</span>
+        <span class="arrow">→</span>
+        <span class="handler">HoldFlightSaga</span>
+        <span class="arrow">→</span>
+        <span class="outcome">POST /hold → publish FLIGHT_HELD (await ack) → DB: HELD</span>
+      </div>
+      <div class="saga-step" style="margin-left:32px; color:#ef4444">
+        <span class="arrow" style="color:#ef4444">↳ fail</span>
+        <span class="arrow">→</span>
+        <span class="outcome" style="color:#f87171">publish BOOKING_FAILED</span>
+      </div>
+      <div class="saga-step" style="margin-top:8px">
+        <span class="event">FLIGHT_HELD</span>
+        <span class="arrow">→</span>
+        <span class="handler">ConfirmPaymentSaga</span>
+        <span class="arrow">→</span>
+        <span class="outcome">no-op payment → DB: CONFIRMED + publish PAYMENT_CONFIRMED</span>
+      </div>
+      <div class="saga-step" style="margin-top:8px">
+        <span class="event">PAYMENT_CONFIRMED</span>
+        <span class="arrow">→</span>
+        <span class="handler">CompleteBookingSaga</span>
+        <span class="arrow">→</span>
+        <span class="outcome">DB: COMPLETED + publish BOOKING_COMPLETED</span>
+      </div>
+      <div class="saga-step" style="margin-top:8px">
+        <span class="event">BOOKING_FAILED</span>
+        <span class="arrow">→</span>
+        <span class="handler">BookingFailedHandler</span>
+        <span class="arrow">→</span>
+        <span class="outcome">DB: FAILED (compensation = DB only, no provider rollback)</span>
+      </div>
+    </div>
+    <div class="grid" style="margin-top:20px">
+      <div class="card">
+        <h3>Why Choreography?</h3>
+        <p>Each step is independent — deployable and testable in isolation. No single coordinator is a bottleneck or SPOF. Fits naturally with Kafka event streaming.</p>
+      </div>
+      <div class="card">
+        <h3>Compensation Strategy</h3>
+        <p>Mark booking FAILED in DB only. No provider rollback stubs needed. Real-world would add <code>ReleaseHoldCommand</code> — that pattern is covered in project 09.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Slide 6: Design Decisions -->
+  <div class="slide">
+    <h2>Key Design Decisions</h2>
+    <table>
+      <tr><th>Decision</th><th>Choice</th><th>Why</th></tr>
+      <tr><td>Aggregation</td><td>Scatter-gather, 1.5s deadline</td><td>Partial results beat timeout; slow provider must not block</td></tr>
+      <tr><td>Circuit Breaker</td><td>Per-provider, resilience4j default</td><td>Fail-fast on unhealthy provider; no wait for open CB</td></tr>
+      <tr><td>Cache</td><td>Redis Cache-Aside, 30s TTL</td><td>Volatile prices; 30s balances freshness vs provider load</td></tr>
+      <tr><td>Saga style</td><td>Choreography</td><td>Decoupled steps; orchestration in project 09</td></tr>
+      <tr><td>Outbox</td><td>Atomic booking + event in one TX</td><td>Guarantees event delivery even if Kafka is temporarily down</td></tr>
+      <tr><td>Payment</td><td>No-op</td><td>Payment is not the learning goal; Saga state machine is</td></tr>
+      <tr><td>Compensation</td><td>DB-only (mark FAILED)</td><td>Simpler; full compensation in project 09</td></tr>
+      <tr><td>Kafka DLT</td><td>DefaultErrorHandler + DeadLetterPublishingRecoverer, 3 retries × 1s</td><td>Poison messages route to <code>.DLT</code> topic after 3 retries; consumer group never stalls</td></tr>
+      <tr><td>HoldFlightSaga order</td><td>Kafka send (await ack) before DB update</td><td>If Kafka fails → DB stays PENDING → catch publishes BOOKING_FAILED — no stuck HELD state</td></tr>
+    </table>
+  </div>
+
+  <!-- Slide 7: Resilience & Error Handling -->
+  <div class="slide">
+    <h2>Resilience &amp; Error Handling</h2>
+    <p>Three failure modes — each handled at a different layer.</p>
+    <div class="flow">
+      <pre>
+1. Provider failure (search)
+   ────────────────────────
+   resilience4j @CircuitBreaker per provider
+   CLOSED → OPEN after 3/5 failures  →  fail-fast (no HTTP call)
+   scatter-gather treats CB-open as empty List → partial results returned
+
+2. Poison Kafka message (saga)
+   ────────────────────────────
+   KafkaConfig: DefaultErrorHandler + DeadLetterPublishingRecoverer
+   3 retries × 1s backoff
+   After 3 failures → route to flight.booking.events.DLT
+   Consumer group continues; DLT inspected manually / alerting
+
+3. HoldFlightSaga failure order
+   ──────────────────────────────
+   kafka.send("FLIGHT_HELD").get()    ← await ack FIRST
+   bookingRepository.updateStatus(HELD)
+
+   If Kafka throws: DB stays PENDING
+                    catch block sends BOOKING_FAILED
+                    BookingFailedHandler marks DB FAILED
+   → clean failure path, no stuck HELD state
+      </pre>
+    </div>
+  </div>
+
+  <!-- Slide 8: AWS Equivalent -->
+  <div class="slide">
+    <h2>AWS Equivalent</h2>
+    <p>What we build ourselves — to understand what managed services abstract away.</p>
+    <table>
+      <tr><th>What we build</th><th>AWS equivalent</th></tr>
+      <tr><td>Scatter-gather (CompletableFuture)</td><td>Lambda fan-out via SNS</td></tr>
+      <tr><td>Circuit Breaker (resilience4j)</td><td>API Gateway timeout + retry policies</td></tr>
+      <tr><td>Redis Cache-Aside</td><td>ElastiCache (Redis)</td></tr>
+      <tr><td>Outbox Poller (@Scheduled)</td><td>DynamoDB Streams → Lambda</td></tr>
+      <tr><td>Kafka (saga events)</td><td>EventBridge / SQS FIFO</td></tr>
+      <tr><td>WireMock (provider stubs)</td><td>Real airline GDS APIs (Amadeus, Sabre)</td></tr>
+    </table>
+  </div>
+
+</div>
+
+<nav>
+  <button id="prev" onclick="move(-1)" disabled>&#8592;</button>
+  <span id="counter">1 / 8</span>
+  <button id="next" onclick="move(1)">&#8594;</button>
+</nav>
+
+<script>
+  const slides = document.querySelectorAll('.slide');
+  let cur = 0;
+  function move(d) {
+    slides[cur].classList.remove('active');
+    cur = Math.max(0, Math.min(slides.length - 1, cur + d));
+    slides[cur].classList.add('active');
+    document.getElementById('counter').textContent = (cur + 1) + ' / ' + slides.length;
+    document.getElementById('prev').disabled = cur === 0;
+    document.getElementById('next').disabled = cur === slides.length - 1;
+  }
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight') move(1);
+    if (e.key === 'ArrowLeft')  move(-1);
+  });
+</script>
+</body>
+</html>

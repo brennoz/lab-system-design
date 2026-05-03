@@ -1,0 +1,52 @@
+{
+  "mappings": [
+    {
+      "request": { "method": "GET", "urlPathPattern": "/search/PROVIDER_A.*" },
+      "response": {
+        "status": 200,
+        "headers": { "Content-Type": "application/json" },
+        "body": "[{\"flightId\":\"PA-001\",\"origin\":\"LHR\",\"destination\":\"JFK\",\"departureTime\":\"2025-06-01T08:00:00Z\",\"price\":420.00,\"provider\":\"PROVIDER_A\"},{\"flightId\":\"PA-002\",\"origin\":\"LHR\",\"destination\":\"JFK\",\"departureTime\":\"2025-06-01T14:00:00Z\",\"price\":380.00,\"provider\":\"PROVIDER_A\"}]"
+      }
+    },
+    {
+      "request": { "method": "GET", "urlPathPattern": "/search/PROVIDER_B.*" },
+      "response": {
+        "status": 200,
+        "headers": { "Content-Type": "application/json" },
+        "body": "[{\"flightId\":\"PB-001\",\"origin\":\"LHR\",\"destination\":\"JFK\",\"departureTime\":\"2025-06-01T10:00:00Z\",\"price\":395.00,\"provider\":\"PROVIDER_B\"}]"
+      }
+    },
+    {
+      "request": { "method": "GET", "urlPathPattern": "/search/PROVIDER_C.*" },
+      "response": {
+        "status": 200,
+        "headers": { "Content-Type": "application/json" },
+        "body": "[{\"flightId\":\"PC-001\",\"origin\":\"LHR\",\"destination\":\"JFK\",\"departureTime\":\"2025-06-01T18:00:00Z\",\"price\":450.00,\"provider\":\"PROVIDER_C\"},{\"flightId\":\"PC-002\",\"origin\":\"LHR\",\"destination\":\"JFK\",\"departureTime\":\"2025-06-01T20:00:00Z\",\"price\":410.00,\"provider\":\"PROVIDER_C\"}]"
+      }
+    },
+    {
+      "request": { "method": "POST", "urlPathPattern": "/hold/PROVIDER_A/.*" },
+      "response": {
+        "status": 200,
+        "headers": { "Content-Type": "text/plain" },
+        "body": "HOLD-REF-A123"
+      }
+    },
+    {
+      "request": { "method": "POST", "urlPathPattern": "/hold/PROVIDER_B/.*" },
+      "response": {
+        "status": 200,
+        "headers": { "Content-Type": "text/plain" },
+        "body": "HOLD-REF-B456"
+      }
+    },
+    {
+      "request": { "method": "POST", "urlPathPattern": "/hold/PROVIDER_C/.*" },
+      "response": {
+        "status": 200,
+        "headers": { "Content-Type": "text/plain" },
+        "body": "HOLD-REF-C789"
+      }
+    }
+  ]
+}

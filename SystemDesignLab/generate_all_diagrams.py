@@ -405,6 +405,113 @@ def diagram_07():
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# 08 — Flight Aggregator
+# ══════════════════════════════════════════════════════════════════════════════
+def diagram_08():
+    W, H = 1600, 900
+    s = svg_open(W, H)
+    s += title(W, "08 — Flight Aggregator Architecture",
+               "Scatter-Gather · Circuit Breaker · Cache-Aside (Redis 30s) · Outbox · Choreography Saga")
+
+    BH = 58
+
+    # ── Client + Service ──────────────────────────────────────────────────────
+    s += box(30, 175, 130, BH, SLATE, BLUE_LT, "Client", "search / book", BLUE_LT)
+    s += service_box(210, 90, 230, 240, BLUE, BLUE_LT, "Flight Service", ":8083  Spring Boot",
+                     ["SearchFlightsUseCase", "CreateBookingUseCase", "Circuit Breaker (CB)", "1.5s scatter deadline", "OutboxPoller @Sched"])
+
+    # ── SEARCH LANE ───────────────────────────────────────────────────────────
+    s += section_label(490, 78, "SEARCH PATH — scatter-gather + Cache-Aside", BLUE_LT)
+    s += box(490, 92,  190, BH, ORANGE, ORANGE_LT, "Redis Cache", "Cache-Aside  TTL 30s", ORANGE_LT)
+    s += box(780, 82,  175, 50, TEAL,   TEAL_LT,   "ProviderA (CB)", "WireMock :8090", TEAL_LT)
+    s += box(780, 147, 175, 50, TEAL,   TEAL_LT,   "ProviderB (CB)", "WireMock :8090", TEAL_LT)
+    s += box(780, 212, 175, 50, TEAL,   TEAL_LT,   "ProviderC (CB)", "WireMock :8090", TEAL_LT)
+    s += box(1050, 100, 175, 160, PURPLE, PURPLE_LT, "WireMock :8090", "simulates 3 airline APIs",
+             PURPLE_LT)
+    s += note(1052, 268, "GET /search  POST /hold", MUTED, 11)
+
+    # CB open label
+    s += note(780, 280, "CB OPEN → fail-fast, skip provider (no HTTP call)", ORANGE_LT, 11)
+
+    # ── BOOKING LANE ──────────────────────────────────────────────────────────
+    s += section_label(490, 300, "BOOKING PATH — Outbox + Choreography Saga", GREEN_LT)
+
+    s += service_box(490, 316, 190, 110, ORANGE, ORANGE_LT, "PostgreSQL :5435", "durable state",
+                     ["bookings table", "outbox_events table"])
+    s += box(490, 455, 190, BH, GREEN, GREEN_LT, "OutboxPoller", "@Scheduled 1s", GREEN_LT)
+
+    s += service_box(780, 316, 175, 110, RED, RED_LT, "Kafka", "flight.booking.events",
+                     ["BOOKING_CREATED", "FLIGHT_HELD", "PAYMENT_CONFIRMED", "BOOKING_FAILED"])
+
+    # Saga handlers
+    s += box(1050, 316, 175, BH, GREEN, GREEN_LT, "HoldFlightSaga",     "POST /hold → DB:HELD",    GREEN_LT)
+    s += box(1050, 394, 175, BH, GREEN, GREEN_LT, "ConfirmPaymentSaga", "no-op → DB:CONFIRMED",    GREEN_LT)
+    s += box(1050, 472, 175, BH, GREEN, GREEN_LT, "CompleteBookingSaga","→ DB:COMPLETED",           GREEN_LT)
+    s += box(1050, 550, 175, BH, RED,   RED_LT,   "BookingFailedHandler","→ DB:FAILED",             RED_LT)
+
+    # State labels
+    s += note(1232, 340, "BOOKING_CREATED→FLIGHT_HELD",    MUTED, 10)
+    s += note(1232, 418, "FLIGHT_HELD→PAYMENT_CONFIRMED",  MUTED, 10)
+    s += note(1232, 496, "PAYMENT_CONFIRMED→COMPLETED",    MUTED, 10)
+    s += note(1232, 574, "any failure → FAILED",           MUTED, 10)
+
+    # Booking status state machine (far right)
+    s += service_box(1380, 316, 185, 180, SLATE, SLATE_LT, "Booking Status", "state machine",
+                     ["PENDING", "→ HELD", "→ CONFIRMED", "→ COMPLETED", "| FAILED"])
+
+    # ── ARROWS ────────────────────────────────────────────────────────────────
+    # Client → Service
+    s += arrow(160, 204, 210, 204)
+    # Service → Redis (search)
+    s += arrow(440, 145, 490, 121, "arr-orange", ORANGE_LT, "cache.get(key)")
+    # Redis hit → back
+    s += note(492, 170, "HIT → return; MISS → scatter", ORANGE_LT, 10)
+    # Redis miss → providers (scatter)
+    s += arrow(680, 121, 780, 107, "arr-teal", TEAL_LT, "scatter")
+    s += arrow(680, 121, 780, 172, "arr-teal", TEAL_LT)
+    s += arrow(680, 121, 780, 237, "arr-teal", TEAL_LT)
+    # Providers → WireMock
+    s += arrow(955, 107, 1050, 160, "arr-purple", PURPLE_LT)
+    s += arrow(955, 172, 1050, 178, "arr-purple", PURPLE_LT)
+    s += arrow(955, 237, 1050, 200, "arr-purple", PURPLE_LT)
+    # Service → PostgreSQL (booking)
+    s += arrow(440, 240, 490, 345, "arr-orange", ORANGE_LT, "TX: booking+outbox")
+    # Outbox → Kafka
+    s += arrow(680, 484, 780, 390, "arr-red", RED_LT, "publish event")
+    # OutboxPoller → PostgreSQL (mark published)
+    s += arrow(585, 455, 585, 426, "arr-green", GREEN_LT)
+    # Kafka → Saga handlers
+    s += arrow(955, 350, 1050, 345)
+    s += arrow(955, 371, 1050, 423)
+    s += arrow(955, 390, 1050, 501)
+    s += arrow(955, 410, 1050, 579, "arr-red", RED_LT)
+    # Saga handlers → status update (PostgreSQL)
+    s += curve(f"M1225,345 C1295,345 1310,380 1380,380", GREEN_LT, "arr-green")
+    s += curve(f"M1225,423 C1295,423 1310,415 1380,415", GREEN_LT, "arr-green")
+    s += curve(f"M1225,501 C1295,501 1310,450 1380,450", GREEN_LT, "arr-green")
+    s += curve(f"M1225,579 C1295,579 1310,475 1380,475", RED_LT,   "arr-red")
+
+    # ── LEGEND + NOTES ────────────────────────────────────────────────────────
+    s += legend(40, 490, [
+        (BLUE,   BLUE_LT,   "Spring Boot Service"),
+        (ORANGE, ORANGE_LT, "Redis / PostgreSQL storage"),
+        (TEAL,   TEAL_LT,   "Provider adapters + Circuit Breaker"),
+        (PURPLE, PURPLE_LT, "WireMock (simulates airline APIs)"),
+        (GREEN,  GREEN_LT,  "Saga success path"),
+        (RED,    RED_LT,    "Failure path / Kafka"),
+    ])
+    s += notes_section(40, 700, [
+        "1.  Scatter-gather: fan out 3 providers in parallel via CompletableFuture; collect after 1.5s deadline",
+        "2.  Circuit Breaker: OPEN provider fails-fast (no HTTP call); scatter-gather treats it as empty result",
+        "3.  Cache-Aside Redis 30s: popular routes served without hitting providers; prices refresh every 30s",
+        "4.  Outbox: booking + event written atomically in one TX; OutboxPoller publishes to Kafka independently",
+        "5.  Choreography Saga: each handler is independent; no central coordinator; compensation = DB FAILED only",
+    ])
+    s += svg_close()
+    return html_wrap(s, W, H), W, H
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # Runner
 # ══════════════════════════════════════════════════════════════════════════════
 def generate(project_dir, diagram_fn):
@@ -433,3 +540,4 @@ if __name__ == "__main__":
     generate(f"{BASE}/05-url-shortener",       diagram_05)
     generate(f"{BASE}/06-web-crawler",         diagram_06)
     generate(f"{BASE}/07-notification-system", diagram_07)
+    generate(f"{BASE}/08-flight-aggregator",   diagram_08)
