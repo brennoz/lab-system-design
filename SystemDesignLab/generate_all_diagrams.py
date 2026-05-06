@@ -512,6 +512,113 @@ def diagram_08():
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# 09 — Bank System
+# ══════════════════════════════════════════════════════════════════════════════
+def diagram_09():
+    W, H = 1600, 900
+    s = svg_open(W, H)
+    s += title(W, "09 — Bank System Architecture",
+               "Hybrid Event Sourcing · Orchestration Saga · Outbox · Idempotency · JWT Auth")
+
+    BH = 58
+
+    # ── Client + Service ──────────────────────────────────────────────────────
+    s += box(30, 175, 130, BH, SLATE, BLUE_LT, "Client", "REST + JWT", BLUE_LT)
+    s += service_box(210, 90, 230, 260, BLUE, BLUE_LT, "Bank Service", ":8084  Spring Boot",
+                     ["AuthController", "AccountController", "TransferController",
+                      "JwtAuthFilter", "OutboxPoller @Sched"])
+
+    # ── AUTH LANE ─────────────────────────────────────────────────────────────
+    s += section_label(490, 78, "AUTH — JWT stateless", BLUE_LT)
+    s += box(490, 92, 190, BH, PURPLE, PURPLE_LT, "JwtService", "BCrypt + jjwt 0.12", PURPLE_LT)
+    s += box(730, 92, 190, BH, PURPLE, PURPLE_LT, "bank_users", "PostgreSQL :5436", PURPLE_LT)
+
+    # ── ACCOUNT LANE ──────────────────────────────────────────────────────────
+    s += section_label(490, 175, "ACCOUNTS — hybrid event sourcing", GREEN_LT)
+    s += box(490, 192, 190, BH, GREEN, GREEN_LT, "Deposit/Withdraw", "@Transactional", GREEN_LT)
+    s += service_box(730, 175, 190, 110, ORANGE, ORANGE_LT, "PostgreSQL :5436", "accounts",
+                     ["balance (snapshot)", "version (opt. lock)", "account_events log"])
+
+    # ── TRANSFER LANE ─────────────────────────────────────────────────────────
+    s += section_label(490, 310, "TRANSFERS — Orchestration Saga + Idempotency", BLUE_LT)
+
+    s += box(490, 325, 190, BH, TEAL, TEAL_LT, "InitiateTransfer", "idempotency check", TEAL_LT)
+
+    # Orchestrator
+    s += service_box(730, 310, 200, 200, BLUE, BLUE_LT, "TransferSaga\nOrchestrator", "3 TXs",
+                     ["TX1: debit → DEBITING", "TX2: credit → CREDITING", "TX3: → COMPLETED",
+                      "Compensation: DEBIT_REVERSED"])
+
+    # Status boxes
+    s += box(990, 316, 140, 44, GREEN, GREEN_LT, "COMPLETED", "", GREEN_LT)
+    s += box(990, 375, 140, 44, RED,   RED_LT,   "COMPENSATED", "credit failed", RED_LT)
+    s += box(990, 434, 140, 44, RED,   RED_LT,   "FAILED", "debit failed", RED_LT)
+
+    # DB (transfers + account_events)
+    s += service_box(1190, 310, 200, 200, ORANGE, ORANGE_LT, "PostgreSQL :5436", "transfers",
+                     ["id, from, to, amount", "status", "idempotency_key (UNIQUE)",
+                      "account_events", "outbox_events"])
+
+    # ── OUTBOX + KAFKA ────────────────────────────────────────────────────────
+    s += section_label(490, 540, "OUTBOX — at-least-once Kafka delivery", RED_LT)
+    s += box(490, 558, 190, BH, RED, RED_LT, "OutboxPoller", "@Scheduled 1s", RED_LT)
+    s += box(730, 558, 190, BH, RED, RED_LT, "Kafka :9095", "bank.events topic", RED_LT)
+    s += note(730, 628, "TRANSFER_COMPLETED | TRANSFER_FAILED", MUTED, 11)
+
+    # ── ARROWS ────────────────────────────────────────────────────────────────
+    # client → service
+    s += arrow(160, 204, 210, 204)
+
+    # service → auth
+    s += arrow(440, 120, 490, 120)
+    s += arrow(680, 120, 730, 120)
+
+    # service → deposit/withdraw
+    s += arrow(440, 220, 490, 220)
+    s += arrow(680, 220, 730, 220)
+
+    # service → initiate transfer
+    s += arrow(440, 354, 490, 354)
+    s += arrow(680, 354, 730, 395)
+
+    # orchestrator → outcomes
+    s += arrow(930, 350, 990, 338)
+    s += arrow(930, 390, 990, 397)
+    s += arrow(930, 430, 990, 456)
+
+    # orchestrator → DB
+    s += arrow(1130, 395, 1190, 395)
+
+    # outbox flow
+    s += arrow(440, 587, 490, 587)
+    s += arrow(680, 587, 730, 587)
+    s += arrow(920, 587, 990, 587)  # kafka send
+
+    # DB → outbox poller
+    s += curve(f"M1290,510 C1290,550 700,550 680,587", ORANGE_LT, "arr-orange")
+
+    # ── LEGEND + NOTES ────────────────────────────────────────────────────────
+    s += legend(40, 490, [
+        (BLUE,   BLUE_LT,   "Spring Boot Service / Orchestrator"),
+        (PURPLE, PURPLE_LT, "JWT auth + BCrypt"),
+        (GREEN,  GREEN_LT,  "Account operations (deposit/withdraw)"),
+        (TEAL,   TEAL_LT,   "Transfer initiation + idempotency"),
+        (ORANGE, ORANGE_LT, "PostgreSQL (accounts, events, transfers, outbox)"),
+        (RED,    RED_LT,    "Failure path / Kafka outbox"),
+    ])
+    s += notes_section(40, 700, [
+        "1.  Hybrid Event Sourcing: balance column for O(1) reads + account_events log for full audit trail",
+        "2.  Optimistic locking: UPDATE ... WHERE version = ? — 0 rows updated = concurrent conflict detected",
+        "3.  Orchestration Saga: TransferSagaOrchestrator drives TX1(debit) → TX2(credit) → TX3(complete) imperatively",
+        "4.  Compensation: if TX2 fails, re-credit source account (TRANSFER_DEBIT_REVERSED) — no external rollback needed",
+        "5.  Idempotency: client-supplied key stored in UNIQUE column; duplicate → return existing transfer, no re-execution",
+        "6.  JWT: stateless, 24h expiry, BCrypt passwords, JwtAuthFilter sets SecurityContext on every request",
+    ])
+    s += svg_close()
+    return html_wrap(s, W, H), W, H
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # Runner
 # ══════════════════════════════════════════════════════════════════════════════
 def generate(project_dir, diagram_fn):
@@ -541,3 +648,4 @@ if __name__ == "__main__":
     generate(f"{BASE}/06-web-crawler",         diagram_06)
     generate(f"{BASE}/07-notification-system", diagram_07)
     generate(f"{BASE}/08-flight-aggregator",   diagram_08)
+    generate(f"{BASE}/09-bank-system",         diagram_09)

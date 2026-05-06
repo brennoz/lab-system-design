@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>09 — Bank System</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0f1117; color: #e2e8f0; height: 100vh; overflow: hidden; }
+
+  .slideshow { width: 100%; height: 100vh; position: relative; }
+  .slide { display: none; width: 100%; height: 100vh; flex-direction: column; justify-content: flex-start; align-items: center; padding: 48px 64px; overflow-y: auto; }
+  .slide.active { display: flex; }
+
+  h1 { font-size: 2.4rem; font-weight: 700; color: #60a5fa; margin-bottom: 8px; text-align: center; }
+  h2 { font-size: 1.6rem; font-weight: 600; color: #93c5fd; margin-bottom: 24px; text-align: center; }
+  h3 { font-size: 1.1rem; font-weight: 600; color: #7dd3fc; margin: 20px 0 10px; }
+  p  { color: #cbd5e1; line-height: 1.7; margin-bottom: 12px; max-width: 860px; text-align: center; }
+
+  .subtitle { font-size: 1.1rem; color: #94a3b8; margin-bottom: 32px; text-align: center; }
+  .tag { display: inline-block; background: #1e3a5f; color: #60a5fa; border: 1px solid #2563eb; border-radius: 6px; padding: 4px 12px; margin: 4px; font-size: 0.85rem; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; width: 100%; max-width: 1000px; margin-top: 16px; }
+  .card { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 20px; }
+  .card h3 { margin-top: 0; }
+  .card p { text-align: left; font-size: 0.9rem; }
+
+  .flow { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 24px 32px; max-width: 900px; width: 100%; margin-top: 16px; }
+  .flow pre { color: #94a3b8; font-size: 0.9rem; line-height: 1.8; white-space: pre-wrap; }
+
+  table { border-collapse: collapse; width: 100%; max-width: 900px; margin-top: 16px; font-size: 0.9rem; }
+  th { background: #1e3a5f; color: #60a5fa; padding: 10px 16px; text-align: left; border: 1px solid #334155; }
+  td { padding: 9px 16px; border: 1px solid #1e293b; color: #cbd5e1; vertical-align: top; }
+  tr:nth-child(even) td { background: #1a2332; }
+
+  .arch-img { max-width: 960px; width: 100%; border-radius: 12px; border: 1px solid #334155; margin-top: 16px; }
+
+  .saga-step { display: flex; align-items: center; gap: 12px; margin: 8px 0; }
+  .saga-step .status { background: #1e3a5f; color: #60a5fa; border: 1px solid #2563eb; border-radius: 6px; padding: 4px 10px; font-size: 0.82rem; font-family: monospace; white-space: nowrap; }
+  .saga-step .tx { background: #1a2e1a; color: #86efac; border: 1px solid #166534; border-radius: 6px; padding: 4px 10px; font-size: 0.82rem; font-family: monospace; white-space: nowrap; }
+  .saga-step .fail { background: #2e1a1a; color: #f87171; border: 1px solid #991b1b; border-radius: 6px; padding: 4px 10px; font-size: 0.82rem; font-family: monospace; white-space: nowrap; }
+  .saga-step .arrow { color: #475569; font-size: 1.1rem; }
+  .saga-step .outcome { color: #94a3b8; font-size: 0.82rem; }
+
+  nav { position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 16px; background: #1e293b; border: 1px solid #334155; border-radius: 40px; padding: 10px 24px; z-index: 100; }
+  nav button { background: none; border: none; color: #94a3b8; font-size: 1.1rem; cursor: pointer; padding: 4px 10px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  nav button:hover { color: #60a5fa; background: #1e3a5f; }
+  nav button:disabled { color: #334155; cursor: default; background: none; }
+  #counter { color: #64748b; font-size: 0.85rem; min-width: 56px; text-align: center; }
+</style>
+</head>
+<body>
+<div class="slideshow">
+
+  <!-- Slide 1: Title -->
+  <div class="slide active">
+    <h1>09 — Bank System</h1>
+    <p class="subtitle">Event Sourcing · Orchestration Saga · Outbox · Idempotency · JWT Auth</p>
+    <div style="margin:24px 0">
+      <span class="tag">Spring Boot 3.3</span>
+      <span class="tag">Java 21</span>
+      <span class="tag">Kafka</span>
+      <span class="tag">PostgreSQL</span>
+      <span class="tag">JWT (jjwt)</span>
+      <span class="tag">Spring Security</span>
+    </div>
+    <p>A bank system where every account mutation is recorded in an immutable event log. Transfers run as an Orchestration Saga — the orchestrator drives debit → credit steps with compensation if anything fails.</p>
+    <p><strong style="color:#f59e0b">Core challenge:</strong> transfer money reliably with a full audit trail, idempotent API, and JWT-protected endpoints.</p>
+  </div>
+
+  <!-- Slide 2: Architecture Diagram -->
+  <div class="slide">
+    <h2>Architecture</h2>
+    <img src="architecture.jpg" alt="Architecture diagram" class="arch-img" onerror="this.style.display='none'">
+  </div>
+
+  <!-- Slide 3: Hybrid Event Sourcing -->
+  <div class="slide">
+    <h2>Hybrid Event Sourcing</h2>
+    <p>Both a <code>balance</code> snapshot column and an immutable <code>account_events</code> log. O(1) reads, full audit trail.</p>
+    <div class="flow">
+      <pre>
+accounts table                    account_events table
+──────────────────────            ──────────────────────────────────────────────
+id | owner_id | balance | version  id | account_id | event_type        | amount | balance_before | balance_after
+   |          |   750.00 |   3      1  | acc-123    | DEPOSITED          | 1000   | 0              | 1000
+                                   2  | acc-123    | WITHDRAWN          |  100   | 1000           |  900
+                                   3  | acc-123    | TRANSFER_DEBITED   |  150   |  900           |  750
+
+Optimistic locking:
+  UPDATE accounts SET balance = ?, version = version + 1
+  WHERE id = ? AND version = ?
+  → 0 rows updated = version mismatch → retry / fail
+
+Full Event Sourcing (not used here):
+  balance = events.stream().reduce(ZERO, applyEvent)  ← O(n)
+  Needs snapshots at scale — covered in dedicated Event Sourcing project
+      </pre>
+    </div>
+    <div class="grid" style="margin-top:20px">
+      <div class="card">
+        <h3>Why Hybrid?</h3>
+        <p>Full event sourcing adds snapshot/projection complexity that's out of scope here. Hybrid gives O(1) balance reads and a full audit log without that overhead.</p>
+      </div>
+      <div class="card">
+        <h3>Event Types</h3>
+        <p><strong style="color:#86efac">DEPOSITED</strong> — funds added<br>
+        <strong style="color:#86efac">WITHDRAWN</strong> — funds removed<br>
+        <strong style="color:#60a5fa">TRANSFER_DEBITED</strong> — saga step 1<br>
+        <strong style="color:#60a5fa">TRANSFER_CREDITED</strong> — saga step 2<br>
+        <strong style="color:#f87171">TRANSFER_DEBIT_REVERSED</strong> — compensation</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Slide 4: Orchestration Saga -->
+  <div class="slide">
+    <h2>Orchestration Saga</h2>
+    <p><code>TransferSagaOrchestrator</code> drives steps imperatively. Each step runs in its own <code>TransactionTemplate</code>-managed transaction.</p>
+    <div style="max-width:860px; width:100%; margin-top:16px">
+      <div class="saga-step">
+        <span class="status">PENDING</span>
+        <span class="arrow">→</span>
+        <span class="tx">TX1: debit from-account</span>
+        <span class="arrow">→</span>
+        <span class="status">DEBITING</span>
+        <span class="outcome">+ AccountEvent(TRANSFER_DEBITED)</span>
+      </div>
+      <div class="saga-step" style="margin-left:32px">
+        <span class="arrow" style="color:#ef4444">↳ TX1 fails</span>
+        <span class="arrow">→</span>
+        <span class="fail">FAILED</span>
+        <span class="outcome">+ outbox TRANSFER_FAILED</span>
+      </div>
+      <div class="saga-step" style="margin-top:8px">
+        <span class="status">DEBITING</span>
+        <span class="arrow">→</span>
+        <span class="tx">TX2: credit to-account</span>
+        <span class="arrow">→</span>
+        <span class="status">CREDITING</span>
+        <span class="outcome">+ AccountEvent(TRANSFER_CREDITED)</span>
+      </div>
+      <div class="saga-step" style="margin-left:32px">
+        <span class="arrow" style="color:#ef4444">↳ TX2 fails</span>
+        <span class="arrow">→</span>
+        <span class="fail">COMPENSATING</span>
+        <span class="outcome">re-credit from + TRANSFER_DEBIT_REVERSED</span>
+        <span class="arrow">→</span>
+        <span class="fail">COMPENSATED</span>
+      </div>
+      <div class="saga-step" style="margin-top:8px">
+        <span class="status">CREDITING</span>
+        <span class="arrow">→</span>
+        <span class="tx">TX3: complete</span>
+        <span class="arrow">→</span>
+        <span class="status">COMPLETED</span>
+        <span class="outcome">+ outbox TRANSFER_COMPLETED</span>
+      </div>
+    </div>
+    <div class="grid" style="margin-top:20px">
+      <div class="card">
+        <h3>Why Orchestration?</h3>
+        <p>Single-service flow. Orchestrator sees full state and drives each step. Easier to reason about than choreography when steps are sequential. Choreography used in project 08 for contrast.</p>
+      </div>
+      <div class="card">
+        <h3>TransactionTemplate</h3>
+        <p>Each step uses <code>txTemplate.executeWithoutResult()</code> so each TX commits independently. Failures don't roll back earlier committed steps — enabling the saga compensation path.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Slide 5: Idempotency + JWT -->
+  <div class="slide">
+    <h2>Idempotency &amp; JWT Auth</h2>
+    <div class="grid" style="margin-top:0">
+      <div class="card">
+        <h3>Idempotency Key</h3>
+        <p>Client sends <code>Idempotency-Key: &lt;uuid&gt;</code> header on <code>POST /transfers</code>. Stored in a <code>UNIQUE</code> DB column.</p>
+        <div class="flow" style="margin-top:12px; padding:16px">
+          <pre style="font-size:0.8rem">POST /transfers
+ + Idempotency-Key: abc
+   ↓
+   findByIdempotencyKey("abc")
+   ├─ found   → return existing (no saga)
+   └─ not found → save + execute saga
+
+Duplicate race condition:
+  DB UNIQUE constraint → 409 Conflict</pre>
+        </div>
+      </div>
+      <div class="card">
+        <h3>JWT Auth Flow</h3>
+        <p>Stateless. No session. <code>JwtAuthFilter</code> runs before every request.</p>
+        <div class="flow" style="margin-top:12px; padding:16px">
+          <pre style="font-size:0.8rem">POST /auth/register
+  email + password
+  → BCrypt hash
+  → save User
+  → return JWT (24h)
+
+All other endpoints:
+  Authorization: Bearer &lt;token&gt;
+    ↓
+  JwtAuthFilter.doFilterInternal()
+    → JwtService.isValid(token)
+    → JwtService.extractEmail(token)
+    → SecurityContextHolder.set(auth)
+    ↓
+  endpoint proceeds</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Slide 6: Design Decisions -->
+  <div class="slide">
+    <h2>Key Design Decisions</h2>
+    <table>
+      <tr><th>Decision</th><th>Choice</th><th>Why</th></tr>
+      <tr><td>Event Sourcing</td><td>Hybrid (balance + event log)</td><td>O(1) reads; audit trail without snapshot complexity</td></tr>
+      <tr><td>Saga style</td><td>Orchestration</td><td>Single-service sequential flow; project 08 used choreography for contrast</td></tr>
+      <tr><td>TX granularity</td><td>TransactionTemplate per step</td><td>Each saga step commits independently; failures don't roll back earlier steps</td></tr>
+      <tr><td>Optimistic locking</td><td>Manual version column</td><td>Explicit concurrency control — no silent JPA @Version magic</td></tr>
+      <tr><td>Idempotency</td><td>Client key + UNIQUE constraint</td><td>DB enforces uniqueness; race → DataIntegrityViolationException → 409</td></tr>
+      <tr><td>Auth</td><td>JWT stateless (jjwt 0.12)</td><td>No session storage; scales horizontally</td></tr>
+      <tr><td>Password</td><td>BCrypt</td><td>Adaptive hashing; OWASP recommended</td></tr>
+      <tr><td>Compensation</td><td>Re-credit source only</td><td>Simple and correct for single-service; full distributed compensation in later projects</td></tr>
+    </table>
+  </div>
+
+  <!-- Slide 7: AWS Equivalent -->
+  <div class="slide">
+    <h2>AWS Equivalent</h2>
+    <p>What we build ourselves — to understand what managed services abstract away.</p>
+    <table>
+      <tr><th>What we build</th><th>AWS equivalent</th></tr>
+      <tr><td>TransferSagaOrchestrator (TransactionTemplate)</td><td>Step Functions (Express Workflows)</td></tr>
+      <tr><td>Outbox Poller (@Scheduled)</td><td>DynamoDB Streams → Lambda</td></tr>
+      <tr><td>Kafka (final events)</td><td>EventBridge / SQS FIFO</td></tr>
+      <tr><td>JWT auth (JwtAuthFilter)</td><td>API Gateway + Cognito Authorizer</td></tr>
+      <tr><td>Optimistic locking (version column)</td><td>DynamoDB conditional writes (ConditionExpression)</td></tr>
+      <tr><td>Account event log</td><td>DynamoDB Streams / Kinesis Data Streams</td></tr>
+    </table>
+  </div>
+
+</div>
+
+<nav>
+  <button id="prev" onclick="move(-1)" disabled>&#8592;</button>
+  <span id="counter">1 / 7</span>
+  <button id="next" onclick="move(1)">&#8594;</button>
+</nav>
+
+<script>
+  const slides = document.querySelectorAll('.slide');
+  let cur = 0;
+  function move(d) {
+    slides[cur].classList.remove('active');
+    cur = Math.max(0, Math.min(slides.length - 1, cur + d));
+    slides[cur].classList.add('active');
+    document.getElementById('counter').textContent = (cur + 1) + ' / ' + slides.length;
+    document.getElementById('prev').disabled = cur === 0;
+    document.getElementById('next').disabled = cur === slides.length - 1;
+  }
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight') move(1);
+    if (e.key === 'ArrowLeft')  move(-1);
+  });
+</script>
+</body>
+</html>
