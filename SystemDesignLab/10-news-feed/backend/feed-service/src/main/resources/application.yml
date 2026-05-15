@@ -1,0 +1,24 @@
+server:
+  port: 8085
+
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5437/feed
+    username: feed
+    password: feed
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+  data:
+    redis:
+      host: localhost
+      port: 6381
+
+jwt:
+  # 256-bit HS256 secret (base64 of "thisisaverylongsecretkeyforthenewsfeed")
+  secret: dGhpc2lzYXZlcnlsb25nc2VjcmV0a2V5Zm9ydGhlbmV3c2ZlZWQ=
+  expiration-ms: 86400000

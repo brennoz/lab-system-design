@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>10 — News Feed System</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0f1117; color: #e2e8f0; height: 100vh; overflow: hidden; }
+  .slideshow { width: 100%; height: 100vh; position: relative; }
+  .slide { display: none; width: 100%; height: 100vh; flex-direction: column; justify-content: flex-start; align-items: center; padding: 48px 64px; overflow-y: auto; }
+  .slide.active { display: flex; }
+  h1 { font-size: 2.4rem; font-weight: 700; color: #60a5fa; margin-bottom: 8px; text-align: center; }
+  h2 { font-size: 1.6rem; font-weight: 600; color: #93c5fd; margin-bottom: 24px; text-align: center; }
+  h3 { font-size: 1.1rem; font-weight: 600; color: #7dd3fc; margin: 20px 0 10px; }
+  p  { color: #cbd5e1; line-height: 1.7; margin-bottom: 12px; max-width: 860px; text-align: center; }
+  .subtitle { font-size: 1.1rem; color: #94a3b8; margin-bottom: 32px; text-align: center; }
+  .tag { display: inline-block; background: #1e3a5f; color: #60a5fa; border: 1px solid #2563eb; border-radius: 6px; padding: 4px 12px; margin: 4px; font-size: 0.85rem; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; width: 100%; max-width: 1000px; margin-top: 16px; }
+  .card { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 20px; }
+  .card h3 { margin-top: 0; }
+  .card p { text-align: left; font-size: 0.9rem; }
+  .flow { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 24px 32px; max-width: 900px; width: 100%; margin-top: 16px; }
+  .flow pre { color: #94a3b8; font-size: 0.9rem; line-height: 1.8; white-space: pre-wrap; }
+  table { border-collapse: collapse; width: 100%; max-width: 900px; margin-top: 16px; font-size: 0.9rem; }
+  th { background: #1e3a5f; color: #60a5fa; padding: 10px 16px; text-align: left; border: 1px solid #334155; }
+  td { padding: 9px 16px; border: 1px solid #1e293b; color: #cbd5e1; vertical-align: top; }
+  tr:nth-child(even) td { background: #1a2332; }
+  .arch-img { max-width: 960px; width: 100%; border-radius: 12px; border: 1px solid #334155; margin-top: 16px; }
+  nav { position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 16px; background: #1e293b; border: 1px solid #334155; border-radius: 40px; padding: 10px 24px; z-index: 100; }
+  nav button { background: none; border: none; color: #94a3b8; font-size: 1.1rem; cursor: pointer; padding: 4px 10px; border-radius: 6px; transition: color 0.2s, background 0.2s; }
+  nav button:hover { color: #60a5fa; background: #1e3a5f; }
+  nav button:disabled { color: #334155; cursor: default; background: none; }
+  #counter { color: #64748b; font-size: 0.85rem; min-width: 56px; text-align: center; }
+</style>
+</head>
+<body>
+<div class="slideshow">
+
+  <!-- Slide 1: Title -->
+  <div class="slide active">
+    <h1>10 — News Feed System</h1>
+    <p class="subtitle">Fan-out on Write · Fan-out on Read · Hybrid · Redis Sorted Sets · Hybrid Ranking</p>
+    <div style="margin:24px 0">
+      <span class="tag">Spring Boot 3.3</span>
+      <span class="tag">Java 21</span>
+      <span class="tag">Redis</span>
+      <span class="tag">PostgreSQL</span>
+      <span class="tag">JWT</span>
+    </div>
+    <p>A news feed that delivers a ranked timeline of posts from followed users. Celebrities (≥10k followers) skip fan-out at write time — their posts are merged at read time. Regular users get instant write-time fan-out.</p>
+    <p><strong style="color:#f59e0b">Core challenge:</strong> serve a ranked feed in &lt;100ms while handling both celebrity (high-follower) and regular (low-follower) authors efficiently.</p>
+  </div>
+
+  <!-- Slide 2: Architecture -->
+  <div class="slide">
+    <h2>Architecture</h2>
+    <img src="architecture.jpg" alt="Architecture diagram" class="arch-img" onerror="this.style.display='none'">
+  </div>
+
+  <!-- Slide 3: Fan-out Strategies -->
+  <div class="slide">
+    <h2>Fan-out: Write vs Read vs Hybrid</h2>
+    <div class="grid" style="margin-top:0">
+      <div class="card">
+        <h3 style="color:#86efac">Fan-out on Write</h3>
+        <p>On post create, push to every follower's Redis sorted set immediately.</p>
+        <p><strong>✓</strong> Read is O(1) — just ZREVRANGE<br>
+        <strong>✗</strong> Expensive for celebrities — 500k Redis writes</p>
+        <p style="color:#94a3b8; font-size:0.82rem; margin-top:8px">Used for: regular users &lt; 10k followers</p>
+      </div>
+      <div class="card">
+        <h3 style="color:#60a5fa">Fan-out on Read</h3>
+        <p>On feed request, pull recent posts from all followed users and merge.</p>
+        <p><strong>✓</strong> Write is cheap — just save post<br>
+        <strong>✗</strong> Slow read — N DB queries per celebrity followed</p>
+        <p style="color:#94a3b8; font-size:0.82rem; margin-top:8px">Used for: celebrities ≥ 10k followers</p>
+      </div>
+      <div class="card">
+        <h3 style="color:#fbbf24">Hybrid (this project)</h3>
+        <p>Regular users → fan-out on write.<br>Celebrities → fan-out on read.</p>
+        <div class="flow" style="margin-top:12px; padding:16px">
+          <pre style="font-size:0.8rem">GET /feed:
+  Redis.ZREVRANGE(feed:{uid})  ← regular
+  + DB.recent(celebrity_1)     ← on read
+  + DB.recent(celebrity_2)
+  → merge + rank → top 20</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Slide 4: Redis Timeline -->
+  <div class="slide">
+    <h2>Redis Sorted Set Timeline</h2>
+    <p>Each user has a sorted set <code>feed:{userEmail}</code>. Score encodes rank. Read = ZREVRANGE.</p>
+    <div class="flow">
+      <pre>
+Key:    feed:{userEmail}
+Score:  hybrid_score  (double — fits Redis sorted set)
+Member: postId (UUID string)
+
+Fan-out write (regular user posts):
+  for each follower:
+    ZADD feed:{followerId} <score> <postId>    O(log N)
+    ZREMRANGEBYRANK feed:{followerId} 0 -501   trim to 500 max
+
+Feed read:
+  ZREVRANGE feed:{userId} 0 59                 top 60 candidates
+  load posts from DB by IDs
+  merge celebrity posts (pulled from DB)
+  re-rank → paginate → return 20
+
+Why sorted set?
+  O(log N) insert, O(log N + M) range read (M = returned elements)
+  Score naturally orders by rank — no sort step needed
+  Supports ZREMRANGEBYRANK for capped inbox model
+      </pre>
+    </div>
+  </div>
+
+  <!-- Slide 5: Hybrid Ranking -->
+  <div class="slide">
+    <h2>Hybrid Ranking Score</h2>
+    <p>Score = recency + engagement. Stored as Redis sorted set score. No separate scoring pass.</p>
+    <div class="flow">
+      <pre>
+score = createdAt.epochSeconds + (likeCount × LIKE_BOOST_SECONDS)
+LIKE_BOOST_SECONDS = 1000  (~16 minutes per like)
+
+Examples (2025-06-01 12:00:00 = epoch 1748779200):
+  Post A: 0 likes  → score = 1748779200 + 0      = 1748779200
+  Post B: 5 likes  → score = 1748779200 + 5000    = 1748784200  (+83 min above A)
+  Post C: 100 likes→ score = 1748779200 + 100000  = 1748879200  (+27h above A)
+
+  Older post with 50 likes published 1h ago:
+  epoch = 1748779200 - 3600 = 1748775600
+  score = 1748775600 + 50000 = 1748825600
+  → ranks above fresh post A but below post B (5 likes)
+
+On like: update post DB + re-insert in each follower feed with new score
+  (only for regular users — celebrity feeds rebuilt on read anyway)
+      </pre>
+    </div>
+    <div class="grid" style="margin-top:16px">
+      <div class="card">
+        <h3>Why additive?</h3>
+        <p>Fits in a single Redis sorted set double score. No separate scoring index or secondary sort needed. Simple to reason about and tune.</p>
+      </div>
+      <div class="card">
+        <h3>Alternatives</h3>
+        <p>Multiplicative decay: <code>score = likes / (age_hours + 2)^1.5</code> (Hacker News formula). More sophisticated but requires re-scoring job as posts age.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Slide 6: Design Decisions -->
+  <div class="slide">
+    <h2>Key Design Decisions</h2>
+    <table>
+      <tr><th>Decision</th><th>Choice</th><th>Why</th></tr>
+      <tr><td>Fan-out strategy</td><td>Hybrid (write &lt;10k, read ≥10k)</td><td>Write-only: celebrities clog fan-out. Read-only: wasteful for regular users</td></tr>
+      <tr><td>Celebrity threshold</td><td>10k followers</td><td>Common baseline; configurable constant in FanOutService</td></tr>
+      <tr><td>Timeline storage</td><td>Redis sorted set per user</td><td>O(log N) insert + range read; score encodes rank directly</td></tr>
+      <tr><td>Ranking</td><td>epoch + like×1000 (additive)</td><td>Fits Redis double; no separate scoring pass; easy to tune</td></tr>
+      <tr><td>Feed cap</td><td>500 items per user</td><td>Prevents unbounded Redis growth; inbox not archive</td></tr>
+      <tr><td>Celebrity detection</td><td>followerCount on User (denormalized)</td><td>Avoids N queries per feed read; updated on follow/unfollow</td></tr>
+      <tr><td>Kafka</td><td>Not used</td><td>Fan-out synchronous; feed items are eventually consistent anyway</td></tr>
+    </table>
+  </div>
+
+  <!-- Slide 7: AWS Equivalent -->
+  <div class="slide">
+    <h2>AWS Equivalent</h2>
+    <p>What we build ourselves — to understand what managed services abstract away.</p>
+    <table>
+      <tr><th>What we build</th><th>AWS equivalent</th></tr>
+      <tr><td>Redis sorted set (feed)</td><td>ElastiCache (Redis) — same API</td></tr>
+      <tr><td>Fan-out on Write (synchronous)</td><td>Kinesis → Lambda → ElastiCache fan-out</td></tr>
+      <tr><td>Celebrity fan-out on Read</td><td>DynamoDB query at read time + Lambda aggregator</td></tr>
+      <tr><td>PostgreSQL (posts, follows)</td><td>DynamoDB with GSI on authorId + followerId</td></tr>
+      <tr><td>Hybrid ranking score</td><td>ElastiCache ZADD + DynamoDB ranking attribute</td></tr>
+    </table>
+  </div>
+
+</div>
+
+<nav>
+  <button id="prev" onclick="move(-1)" disabled>&#8592;</button>
+  <span id="counter">1 / 7</span>
+  <button id="next" onclick="move(1)">&#8594;</button>
+</nav>
+
+<script>
+  const slides = document.querySelectorAll('.slide');
+  let cur = 0;
+  function move(d) {
+    slides[cur].classList.remove('active');
+    cur = Math.max(0, Math.min(slides.length - 1, cur + d));
+    slides[cur].classList.add('active');
+    document.getElementById('counter').textContent = (cur + 1) + ' / ' + slides.length;
+    document.getElementById('prev').disabled = cur === 0;
+    document.getElementById('next').disabled = cur === slides.length - 1;
+  }
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight') move(1);
+    if (e.key === 'ArrowLeft')  move(-1);
+  });
+</script>
+</body>
+</html>

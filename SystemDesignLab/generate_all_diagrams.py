@@ -619,6 +619,99 @@ def diagram_09():
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# 10 — News Feed System
+# ══════════════════════════════════════════════════════════════════════════════
+def diagram_10():
+    W, H = 1600, 900
+    s = svg_open(W, H)
+    s += title(W, "10 — News Feed System Architecture",
+               "Hybrid Fan-out · Redis Sorted Sets · Hybrid Ranking · JWT Auth")
+
+    BH = 58
+
+    # Client + Service
+    s += box(30, 175, 130, BH, SLATE, BLUE_LT, "Client", "REST + JWT", BLUE_LT)
+    s += service_box(210, 90, 230, 290, BLUE, BLUE_LT, "Feed Service", ":8085  Spring Boot",
+                     ["AuthController", "PostController", "FeedController",
+                      "FollowController", "JwtAuthFilter"])
+
+    # AUTH
+    s += section_label(490, 78, "AUTH — JWT stateless", PURPLE_LT)
+    s += box(490,  92, 190, BH, PURPLE, PURPLE_LT, "JwtService",  "BCrypt + jjwt 0.12", PURPLE_LT)
+    s += box(730,  92, 190, BH, PURPLE, PURPLE_LT, "users table", "PostgreSQL :5437",   PURPLE_LT)
+
+    # WRITE
+    s += section_label(490, 174, "WRITE — POST /posts", GREEN_LT)
+    s += box(490, 192, 190, BH, GREEN, GREEN_LT, "CreatePost", "save + fanOut()", GREEN_LT)
+    s += service_box(730, 174, 200, 148, TEAL, TEAL_LT, "FanOutService", "celebrity threshold = 10k",
+                     ["< 10k followers:", "→ ZADD feed:{followerId}", "≥ 10k (celebrity):", "→ skip fan-out"])
+    s += box(990, 174, 190, BH, ORANGE, ORANGE_LT, "Redis :6381",      "ZADD feed:{followerId}", ORANGE_LT)
+    s += note(992, 242, "score = epoch + likeCount × 1000", MUTED, 11)
+    s += box(990, 263, 190, 44,  SLATE,  SLATE_LT,  "celebrity → skip", "no Redis writes",       SLATE_LT)
+
+    # READ
+    s += section_label(490, 333, "READ — GET /feed", BLUE_LT)
+    s += service_box(490, 349, 190, 170, BLUE, BLUE_LT, "GetFeedUseCase", "hybrid merge",
+                     ["1. ZREVRANGE top 60", "2. fetch post details",
+                      "3. celebrity followees", "4. DB.recent(celebrity)",
+                      "5. merge + rank → 20"])
+    s += box(730, 349, 190, BH, ORANGE, ORANGE_LT, "Redis :6381",      "ZREVRANGE top 60",     ORANGE_LT)
+    s += box(730, 431, 190, BH, ORANGE, ORANGE_LT, "PostgreSQL :5437", "celebrity recent posts", ORANGE_LT)
+    s += box(990, 382, 190, BH, GREEN,  GREEN_LT,  "FeedResponse",     "ranked top 20",         GREEN_LT)
+
+    # LIKE
+    s += section_label(490, 533, "LIKE — POST /posts/{id}/like", ORANGE_LT)
+    s += box(490, 551, 190, BH, ORANGE, ORANGE_LT, "LikePostUseCase",  "likeCount++ + re-score", ORANGE_LT)
+    s += box(730, 551, 190, BH, ORANGE, ORANGE_LT, "PostgreSQL :5437", "UPDATE likeCount",       ORANGE_LT)
+    s += box(990, 551, 190, BH, ORANGE, ORANGE_LT, "Redis :6381",      "ZADD updated score",     ORANGE_LT)
+
+    # Storage (far right)
+    s += service_box(1260, 92, 200, 210, ORANGE, ORANGE_LT, "PostgreSQL :5437", "durable state",
+                     ["posts", "follows", "users", "——————",
+                      "users.followerCount", "denorm — updated on follow"])
+    s += service_box(1260, 322, 200, 115, ORANGE, ORANGE_LT, "Redis :6381", "sorted set timelines",
+                     ["feed:{userEmail}", "score = epoch + likes×1000", "cap: 500 items/user"])
+
+    # Arrows
+    s += arrow(160, 204, 210, 204)                                          # client → service
+    s += arrow(440, 120, 490, 120)                                          # service → JwtService
+    s += arrow(680, 120, 730, 120)                                          # JwtService → users
+    s += arrow(440, 220, 490, 220)                                          # service → CreatePost
+    s += arrow(680, 220, 730, 230, "arr-green", GREEN_LT)                   # CreatePost → FanOut
+    s += arrow(930, 218, 990, 203, "arr-orange", ORANGE_LT, "< 10k")       # FanOut → Redis ZADD
+    s += arrow(930, 278, 990, 285, "arr", "#475569", "≥ 10k")              # FanOut → skip
+    # CreatePost arcs up and over → PostgreSQL storage
+    s += curve("M585,192 C585,72 1360,72 1360,92", ORANGE_LT, "arr-orange")
+    s += note(880, 64, "save post", MUTED, 11)
+
+    s += arrow(440, 434, 490, 434)                                          # service → GetFeed
+    s += arrow(680, 378, 730, 378, "arr-orange", ORANGE_LT)                # GetFeed → Redis
+    s += arrow(680, 455, 730, 460, "arr-orange", ORANGE_LT)                # GetFeed → PG celebrity
+    s += arrow(920, 411, 990, 411)                                          # merge → FeedResponse
+
+    s += arrow(440, 580, 490, 580)                                          # service → LikePost
+    s += arrow(680, 580, 730, 580)                                          # Like → PostgreSQL
+    s += arrow(920, 580, 990, 580)                                          # Like → Redis re-score
+
+    s += legend(40, 500, [
+        (BLUE,   BLUE_LT,   "Spring Boot Service / Use Case"),
+        (PURPLE, PURPLE_LT, "JWT auth + BCrypt"),
+        (GREEN,  GREEN_LT,  "Write fan-out path"),
+        (TEAL,   TEAL_LT,   "FanOutService (hybrid strategy)"),
+        (ORANGE, ORANGE_LT, "Redis / PostgreSQL storage"),
+    ])
+    s += notes_section(40, 700, [
+        "1.  Hybrid fan-out: regular (<10k followers) → write-time ZADD; celebrities → read-time DB merge",
+        "2.  Ranking score = epoch + likeCount×1000; popular posts surface naturally; fits Redis sorted set double",
+        "3.  Celebrity detection: followerCount column on users (denorm); updated on every follow/unfollow",
+        "4.  Feed cap: 500 items per sorted set; ZREMRANGEBYRANK on every ZADD; prevents unbounded Redis growth",
+        "5.  Re-score on like: LikePostUseCase re-ZADDs post in follower feeds; each like boosts ~16 min of freshness",
+    ])
+    s += svg_close()
+    return html_wrap(s, W, H), W, H
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # Runner
 # ══════════════════════════════════════════════════════════════════════════════
 def generate(project_dir, diagram_fn):
@@ -649,3 +742,4 @@ if __name__ == "__main__":
     generate(f"{BASE}/07-notification-system", diagram_07)
     generate(f"{BASE}/08-flight-aggregator",   diagram_08)
     generate(f"{BASE}/09-bank-system",         diagram_09)
+    generate(f"{BASE}/10-news-feed",           diagram_10)

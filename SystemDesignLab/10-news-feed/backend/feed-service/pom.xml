@@ -6,19 +6,13 @@
 
   <parent>
     <groupId>com.lab</groupId>
-    <artifactId>bank-parent</artifactId>
+    <artifactId>feed-parent</artifactId>
     <version>0.0.1-SNAPSHOT</version>
   </parent>
 
-  <artifactId>bank-service</artifactId>
+  <artifactId>feed-service</artifactId>
 
   <dependencies>
-
-    <dependency>
-      <groupId>org.springframework.boot</groupId>
-      <artifactId>spring-boot-starter-actuator</artifactId>
-    </dependency>
-
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-web</artifactId>
@@ -32,8 +26,8 @@
       <artifactId>spring-boot-starter-security</artifactId>
     </dependency>
     <dependency>
-      <groupId>org.springframework.kafka</groupId>
-      <artifactId>spring-kafka</artifactId>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-data-redis</artifactId>
     </dependency>
     <dependency>
       <groupId>org.postgresql</groupId>
