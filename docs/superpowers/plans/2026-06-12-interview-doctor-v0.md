@@ -900,17 +900,44 @@ git commit -m "add GapList: two-column gaps/strengths with stagger animation"
 
 ```typescript
 // components/AnalyzerForm.tsx
+// Note: uses useFormState + useFormStatus (React 18 / Next.js 14)
+// useActionState is React 19+ only; useFormState is the React 18 equivalent
 'use client'
 
-import { useActionState } from 'react'
+import { useFormState, useFormStatus } from 'react-dom'
 import { analyzeAction, AnalysisState } from '@/app/actions/analyze'
 import ScoreCard from '@/components/ScoreCard'
 import GapList from '@/components/GapList'
 
 const initialState: AnalysisState = { status: 'idle' }
 
+// Must be a child of <form> to access useFormStatus
+function SubmitButton() {
+  const { pending } = useFormStatus()
+  return (
+    <button
+      type="submit"
+      disabled={pending}
+      className="border px-16 py-4 text-sm tracking-widest transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed"
+      style={{ borderColor: '#00e87a', color: '#00e87a' }}
+      onMouseEnter={(e) => {
+        if (!pending) {
+          ;(e.target as HTMLButtonElement).style.backgroundColor = '#00e87a'
+          ;(e.target as HTMLButtonElement).style.color = '#030d07'
+        }
+      }}
+      onMouseLeave={(e) => {
+        ;(e.target as HTMLButtonElement).style.backgroundColor = 'transparent'
+        ;(e.target as HTMLButtonElement).style.color = '#00e87a'
+      }}
+    >
+      {pending ? '◌  SCANNING...' : '⬡  RUN DIAGNOSTIC'}
+    </button>
+  )
+}
+
 export default function AnalyzerForm() {
-  const [state, formAction, isPending] = useActionState(analyzeAction, initialState)
+  const [state, formAction] = useFormState(analyzeAction, initialState)
 
   return (
     <div className="max-w-5xl mx-auto px-6 py-12">
@@ -986,27 +1013,7 @@ export default function AnalyzerForm() {
         </div>
 
         <div className="flex justify-center">
-          <button
-            type="submit"
-            disabled={isPending}
-            className="border px-16 py-4 text-sm tracking-widest transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed"
-            style={{
-              borderColor: '#00e87a',
-              color: '#00e87a',
-            }}
-            onMouseEnter={(e) => {
-              if (!isPending) {
-                ;(e.target as HTMLButtonElement).style.backgroundColor = '#00e87a'
-                ;(e.target as HTMLButtonElement).style.color = '#030d07'
-              }
-            }}
-            onMouseLeave={(e) => {
-              ;(e.target as HTMLButtonElement).style.backgroundColor = 'transparent'
-              ;(e.target as HTMLButtonElement).style.color = '#00e87a'
-            }}
-          >
-            {isPending ? '◌  SCANNING...' : '⬡  RUN DIAGNOSTIC'}
-          </button>
+          <SubmitButton />
         </div>
       </form>
 
