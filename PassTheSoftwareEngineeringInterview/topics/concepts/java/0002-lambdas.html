@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Java Lambdas &amp; Functional Interfaces</title>
+<style>
+  :root{--ink:#1a1a1a;--muted:#555;--border:#ddd;--bg-code:#f7f7f5;--accent:#2563eb;--pass:#16a34a;--fail:#dc2626;--warn:#d97706;--bg:#fefefe;--sidebar:#f3f4f6}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Georgia',serif;font-size:17px;line-height:1.7;color:var(--ink);background:var(--bg);max-width:860px;margin:0 auto;padding:3rem 2rem 6rem}
+  h1{font-size:2rem;line-height:1.2;margin-bottom:.4rem}
+  h2{font-size:1.35rem;margin:2.5rem 0 .75rem;border-bottom:1px solid var(--border);padding-bottom:.3rem}
+  h3{font-size:1.05rem;margin:1.5rem 0 .4rem;color:var(--muted)}
+  p{margin-bottom:1rem}
+  .meta{color:var(--muted);font-size:.85rem;font-family:monospace;margin-bottom:2rem}
+  .lesson-nav{font-size:.85rem;margin-bottom:3rem;color:var(--muted)}
+  .lesson-nav a{color:var(--accent);text-decoration:none}
+  .callout{border-left:4px solid var(--accent);background:var(--sidebar);padding:.9rem 1.2rem;margin:1.5rem 0;border-radius:0 6px 6px 0}
+  .callout.warn{border-color:var(--warn);background:#fffbeb}
+  .callout.pass{border-color:var(--pass);background:#f0fdf4}
+  .callout.fail{border-color:var(--fail);background:#fff1f2}
+  .callout strong{display:block;margin-bottom:.3rem;font-family:monospace;font-size:.88rem}
+  pre{background:var(--bg-code);border:1px solid var(--border);border-radius:6px;padding:1.2rem 1.4rem;overflow-x:auto;font-size:.83rem;line-height:1.6;margin:1rem 0 1.5rem;font-family:'Menlo','Consolas',monospace}
+  code{font-family:'Menlo','Consolas',monospace;font-size:.87em;background:var(--bg-code);padding:.1em .35em;border-radius:3px}
+  table{border-collapse:collapse;width:100%;margin:1rem 0 1.5rem;font-size:.9rem}
+  th{text-align:left;padding:.5rem .8rem;border-bottom:2px solid var(--border);background:var(--sidebar)}
+  td{padding:.45rem .8rem;border-bottom:1px solid var(--border);vertical-align:top}
+  .quiz{margin:2rem 0}
+  .question{margin:1.5rem 0}
+  .question p{font-weight:bold;margin-bottom:.75rem}
+  .options{list-style:none}
+  .options li{padding:.6rem 1rem;border:1px solid var(--border);border-radius:5px;margin-bottom:.4rem;cursor:pointer;transition:background .15s;font-size:.92rem}
+  .options li:hover{background:var(--sidebar)}
+  .options li.correct{background:#dcfce7;border-color:var(--pass)}
+  .options li.wrong{background:#fee2e2;border-color:var(--fail)}
+  .options li.reveal{background:#dcfce7;border-color:var(--pass);opacity:.6}
+  .explanation{font-size:.88rem;color:var(--muted);margin-top:.5rem;display:none;padding:.5rem .8rem;background:var(--sidebar);border-radius:4px}
+  .explanation.visible{display:block}
+  footer{margin-top:4rem;border-top:1px solid var(--border);padding-top:1.5rem;font-size:.82rem;color:var(--muted)}
+  .compare-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin:1rem 0 1.5rem}
+  .compare-grid pre{margin:0}
+  .compare-label{font-size:.78rem;font-family:monospace;color:var(--muted);margin-bottom:.25rem;font-weight:bold}
+  @media(max-width:640px){.compare-grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="lesson-nav"><a href="../../">&#8592; Topics</a></div>
+<h1>Java Lambdas &amp; Functional Interfaces</h1>
+<div class="meta">Category: Java &middot; Topic: Lambdas &amp; Functional Interfaces &middot; Est. time: 25 min &middot; Lesson 2 of 3</div>
+
+<p>Lambdas, introduced in Java 8, let you pass behaviour as a value. Instead of creating a class to implement a single-method interface, you write an inline function. This changes how Java code is structured: conditions become reusable <code>Predicate</code> objects, transformations become composable <code>Function</code>s, and anonymous inner classes nearly disappear. The result is code that expresses <em>what</em> to do rather than <em>how</em> to iterate.</p>
+
+<!-- ===== 1. BEFORE LAMBDAS ===== -->
+<h2>1. Before Lambdas &mdash; Anonymous Inner Classes</h2>
+<p>Before Java 8, passing behaviour required an anonymous inner class for every functional interface. Three patterns drove the most boilerplate.</p>
+
+<h3>Sorting a list of transactions</h3>
+<div class="compare-grid">
+  <div>
+    <div class="compare-label">&#x26D4; Java 7 &mdash; anonymous inner class</div>
+    <pre>List&lt;Transaction&gt; txns = getTransactions();
+
+// 5 lines just to express one comparison
+Collections.sort(txns,
+    new Comparator&lt;Transaction&gt;() {
+        @Override
+        public int compare(
+                Transaction a, Transaction b) {
+            return a.getAmount()
+                    .compareTo(b.getAmount());
+        }
+    });</pre>
+  </div>
+  <div>
+    <div class="compare-label">&#x2705; Java 8 &mdash; lambda + method reference</div>
+    <pre>List&lt;Transaction&gt; txns = getTransactions();
+
+// Lambda &mdash; type inferred, one line
+txns.sort((a, b) -&gt;
+    a.getAmount().compareTo(b.getAmount()));
+
+// Method reference &mdash; even cleaner
+txns.sort(
+    Comparator.comparing(Transaction::getAmount));</pre>
+  </div>
+</div>
+
+<h3>Running a task on another thread</h3>
+<div class="compare-grid">
+  <div>
+    <div class="compare-label">&#x26D4; Java 7</div>
+    <pre>executor.submit(new Runnable() {
+    @Override
+    public void run() {
+        auditLog.record(event);
+    }
+});</pre>
+  </div>
+  <div>
+    <div class="compare-label">&#x2705; Java 8</div>
+    <pre>executor.submit(
+    () -&gt; auditLog.record(event));</pre>
+  </div>
+</div>
+
+<h3>Filtering a collection</h3>
+<div class="compare-grid">
+  <div>
+    <div class="compare-label">&#x26D4; Java 7 &mdash; mutable accumulator</div>
+    <pre>List&lt;Bet&gt; highStakeBets = new ArrayList&lt;&gt;();
+for (Bet bet : allBets) {
+    if (bet.getStake().compareTo(
+            BigDecimal.valueOf(1000)) &gt; 0) {
+        highStakeBets.add(bet);
+    }
+}
+// Logic mixed with iteration,
+// result list is mutable</pre>
+  </div>
+  <div>
+    <div class="compare-label">&#x2705; Java 8 &mdash; stream + lambda</div>
+    <pre>List&lt;Bet&gt; highStakeBets = allBets.stream()
+    .filter(bet -&gt; bet.getStake()
+        .compareTo(BigDecimal.valueOf(1000)) &gt; 0)
+    .toList();
+// Logic expressed as a predicate,
+// result is unmodifiable</pre>
+  </div>
+</div>
+
+<div class="callout">
+  <strong>Why the verbosity matters</strong>
+  Anonymous inner classes hide intent under structure. A 6-line Comparator forces the reader to parse syntax before understanding meaning. A lambda expresses the same contract in one line. Less code = smaller surface area for bugs, easier to name, easier to test.
+</div>
+
+<!-- ===== 2. LAMBDA SYNTAX ===== -->
+<h2>2. Lambda Syntax</h2>
+<p>A lambda is an anonymous function: <code>(parameters) -&gt; body</code>. Java infers parameter types from the target functional interface &mdash; you rarely need to write them.</p>
+
+<pre>// No parameters
+Runnable r = () -&gt; System.out.println("settling bets");
+
+// One parameter &mdash; parentheses optional when type is inferred
+Predicate&lt;String&gt; isIban = iban -&gt; iban.startsWith("GB");
+// Explicit type also valid:
+Predicate&lt;String&gt; isIban = (String iban) -&gt; iban.startsWith("GB");
+
+// Two parameters &mdash; parentheses required
+Comparator&lt;Account&gt; byBalance =
+    (a, b) -&gt; a.getBalance().compareTo(b.getBalance());
+
+// Block body &mdash; multiple statements, explicit return required
+Function&lt;Transaction, String&gt; summarise = tx -&gt; {
+    String direction = tx.getAmount().signum() &gt; 0 ? "CREDIT" : "DEBIT";
+    return direction + " " + tx.getAmount().abs() + " " + tx.getCurrency();
+};
+
+// Single void expression &mdash; no return needed
+Consumer&lt;Bet&gt; log = bet -&gt; System.out.println("Placed: " + bet.getId());
+
+// Return type is ALWAYS inferred &mdash; never written in a lambda</pre>
+
+<div class="callout pass">
+  <strong>@FunctionalInterface &mdash; the contract</strong>
+  A functional interface has exactly ONE abstract method. The lambda provides the implementation of that method.
+  Mark your own with <code>@FunctionalInterface</code> &mdash; the compiler enforces the single-abstract-method rule and generates a helpful error if you accidentally add a second abstract method.
+  Default and static methods don't count.
+</div>
+
+<pre>// Define your own functional interface
+@FunctionalInterface
+public interface RiskCheck {
+    RiskDecision evaluate(Bet bet);  // single abstract method
+
+    // default methods are fine &mdash; they don't count as abstract
+    default RiskCheck and(RiskCheck other) {
+        return bet -&gt; {
+            RiskDecision first = this.evaluate(bet);
+            return first == RiskDecision.APPROVE
+                ? other.evaluate(bet)
+                : first;
+        };
+    }
+}
+
+// Use as a lambda
+RiskCheck maxStakeCheck = bet -&gt;
+    bet.getStake().compareTo(MAX_STAKE) &gt; 0
+        ? RiskDecision.DECLINE
+        : RiskDecision.APPROVE;
+
+// Compose using the default method
+RiskCheck combined = maxStakeCheck
+    .and(velocityCheck)
+    .and(selfExclusionCheck);
+RiskDecision decision = combined.evaluate(incomingBet);</pre>
+
+<!-- ===== 3. FUNCTIONAL INTERFACES ===== -->
+<h2>3. Built-in Functional Interfaces</h2>
+<p>Java 8 ships a complete set in <code>java.util.function</code>. These are used throughout the Streams API &mdash; knowing them by signature is essential for reading and writing Java 8+ code fluently.</p>
+
+<table>
+  <thead><tr><th>Interface</th><th>Signature</th><th>Abstract method</th><th>Use for</th></tr></thead>
+  <tbody>
+    <tr><td><code>Predicate&lt;T&gt;</code></td><td><code>T &rarr; boolean</code></td><td><code>test(T t)</code></td><td>Filtering, validation, conditions</td></tr>
+    <tr><td><code>Function&lt;T,R&gt;</code></td><td><code>T &rarr; R</code></td><td><code>apply(T t)</code></td><td>Transformation, type mapping</td></tr>
+    <tr><td><code>Consumer&lt;T&gt;</code></td><td><code>T &rarr; void</code></td><td><code>accept(T t)</code></td><td>Side effects: logging, persisting</td></tr>
+    <tr><td><code>Supplier&lt;T&gt;</code></td><td><code>() &rarr; T</code></td><td><code>get()</code></td><td>Lazy evaluation, factory</td></tr>
+    <tr><td><code>BiFunction&lt;T,U,R&gt;</code></td><td><code>T, U &rarr; R</code></td><td><code>apply(T t, U u)</code></td><td>Two-input transformation</td></tr>
+    <tr><td><code>UnaryOperator&lt;T&gt;</code></td><td><code>T &rarr; T</code></td><td><code>apply(T t)</code></td><td>Transform where in/out type are same</td></tr>
+    <tr><td><code>BinaryOperator&lt;T&gt;</code></td><td><code>T, T &rarr; T</code></td><td><code>apply(T t1, T t2)</code></td><td>Combine two same-type values</td></tr>
+  </tbody>
+</table>
+
+<h3>Predicate&lt;T&gt; &mdash; test a condition, return boolean</h3>
+<div class="compare-grid">
+  <div>
+    <div class="compare-label">&#x26D4; Imperative &mdash; condition copy-pasted</div>
+    <pre>// Same if-check in multiple callers
+if (account.getBalance()
+        .compareTo(BigDecimal.ZERO) &lt; 0) {
+    flagForReview(account);
+}
+// ... in another method ...
+if (account.getBalance()
+        .compareTo(BigDecimal.ZERO) &lt; 0) {
+    sendAlert(account);
+}
+// Change the rule? Find every copy.</pre>
+  </div>
+  <div>
+    <div class="compare-label">&#x2705; Predicate &mdash; defined once, reused everywhere</div>
+    <pre>Predicate&lt;Account&gt; isOverdrawn =
+    acct -&gt; acct.getBalance()
+        .compareTo(BigDecimal.ZERO) &lt; 0;
+
+// One definition, multiple use sites
+accounts.stream()
+    .filter(isOverdrawn)
+    .forEach(this::flagForReview);
+
+accounts.stream()
+    .filter(isOverdrawn)
+    .forEach(alertService::sendAlert);
+// Change the rule? Update one line.</pre>
+  </div>
+</div>
+
+<h3>Function&lt;T,R&gt; &mdash; transform one type into another</h3>
+<div class="compare-grid">
+  <div>
+    <div class="compare-label">&#x26D4; Imperative</div>
+    <pre>// PCI-DSS: mask PAN to last 4 digits
+List&lt;String&gt; masked = new ArrayList&lt;&gt;();
+for (Card card : cards) {
+    String pan = card.getPan();
+    masked.add(
+        "****-****-****-"
+        + pan.substring(pan.length() - 4));
+}</pre>
+  </div>
+  <div>
+    <div class="compare-label">&#x2705; Function + stream</div>
+    <pre>Function&lt;Card, String&gt; maskPan = card -&gt; {
+    String pan = card.getPan();
+    return "****-****-****-"
+        + pan.substring(pan.length() - 4);
+};
+
+List&lt;String&gt; masked = cards.stream()
+    .map(maskPan)
+    .toList();
+// maskPan is independently testable</pre>
+  </div>
+</div>
+
+<h3>Consumer&lt;T&gt; &mdash; act on a value, return nothing</h3>
+<pre>// Consumer encapsulates a side effect
+Consumer&lt;SettledBet&gt; persist  = bet -&gt; betRepo.save(bet);
+Consumer&lt;SettledBet&gt; publish  = bet -&gt; eventBus.publish(bet);
+Consumer&lt;SettledBet&gt; sendReceipt = bet -&gt;
+    emailService.sendSettlementReceipt(bet.getCustomerEmail(), bet);
+
+// andThen &mdash; chain two Consumers, run sequentially
+Consumer&lt;SettledBet&gt; fullFlow =
+    persist.andThen(publish).andThen(sendReceipt);
+
+settledBets.forEach(fullFlow);
+// Every settled bet is persisted, published, and emailed &mdash;
+// in that order, in one named operation</pre>
+
+<h3>Supplier&lt;T&gt; &mdash; produce a value lazily, on demand</h3>
+<pre>// Supplier delays evaluation &mdash; critical for expensive defaults
+
+// BAD: createDefaultAccount() is called even if the account is found
+Account account = accountRepo.findById(id)
+    .orElse(createDefaultAccount());   // always executed
+
+// GOOD: Supplier &mdash; only called if Optional is empty
+Account account = accountRepo.findById(id)
+    .orElseGet(() -&gt; createDefaultAccount()); // lazy
+
+// Supplier as factory &mdash; defer object construction
+Supplier&lt;BetSlip&gt; freshSlip = BetSlip::new;  // constructor ref
+BetSlip slip = freshSlip.get();              // creates only when needed
+
+// Supplier in retry / fallback pattern
+Supplier&lt;PriceDto&gt; priceLoader =
+    () -&gt; priceService.getLatestPrice(marketId);
+PriceDto price = retryTemplate.execute(priceLoader);</pre>
+
+<h3>BiFunction&lt;T,U,R&gt; &mdash; two inputs, one output</h3>
+<pre>// Currency conversion: amount + rate &rarr; converted amount
+BiFunction&lt;BigDecimal, ExchangeRate, BigDecimal&gt; convert =
+    (amount, rate) -&gt; amount.multiply(rate.getRate())
+                            .setScale(2, RoundingMode.HALF_UP);
+
+BigDecimal gbp = convert.apply(usdAmount, usdToGbpRate);
+
+// andThen &mdash; pipe result into a Function
+BiFunction&lt;Bet, Odds, String&gt; describePayout =
+    ((BiFunction&lt;Bet, Odds, BigDecimal&gt;)
+        (bet, odds) -&gt; bet.getStake().multiply(odds.getDecimal()))
+    .andThen(payout -&gt; "&pound;" + payout.toPlainString());
+
+String display = describePayout.apply(bet, odds);</pre>
+
+<h3>UnaryOperator and BinaryOperator</h3>
+<pre>// UnaryOperator&lt;T&gt; &mdash; T &rarr; T (same type in and out)
+// Used where Function&lt;T,T&gt; would be, more expressive signature
+UnaryOperator&lt;BigDecimal&gt; applyVat =
+    amount -&gt; amount.multiply(BigDecimal.valueOf(1.20))
+                    .setScale(2, RoundingMode.HALF_UP);
+
+// BinaryOperator&lt;T&gt; &mdash; (T, T) &rarr; T
+// Combining two values of the same type
+BinaryOperator&lt;BigDecimal&gt; sumAmounts = BigDecimal::add;
+BigDecimal total = transactions.stream()
+    .map(Transaction::getAmount)
+    .reduce(BigDecimal.ZERO, sumAmounts);
+
+// BinaryOperator in stream reduce:
+BinaryOperator&lt;BigDecimal&gt; keepHigher = BigDecimal::max;
+BigDecimal maxStake = bets.stream()
+    .map(Bet::getStake)
+    .reduce(BigDecimal.ZERO, keepHigher);</pre>
+
+<!-- ===== 4. METHOD REFERENCES ===== -->
+<h2>4. Method References &mdash; Four Types</h2>
+<p>Method references are shorthand for lambdas that do nothing except call a single named method. Use them when the lambda body is exactly one method call &mdash; they remove parameter noise and read like intent.</p>
+
+<table>
+  <thead><tr><th>Type</th><th>Syntax</th><th>Equivalent lambda</th></tr></thead>
+  <tbody>
+    <tr><td>Static method</td><td><code>ClassName::staticMethod</code></td><td><code>x -&gt; ClassName.staticMethod(x)</code></td></tr>
+    <tr><td>Bound instance</td><td><code>instance::method</code></td><td><code>x -&gt; instance.method(x)</code></td></tr>
+    <tr><td>Unbound instance</td><td><code>ClassName::instanceMethod</code></td><td><code>x -&gt; x.instanceMethod()</code></td></tr>
+    <tr><td>Constructor</td><td><code>ClassName::new</code></td><td><code>args -&gt; new ClassName(args)</code></td></tr>
+  </tbody>
+</table>
+
+<pre>// 1. STATIC method reference
+// Lambda equivalent: tx -&gt; TransactionValidator.isValid(tx)
+transactions.stream()
+    .filter(TransactionValidator::isValid)   // static method on the class
+    .toList();
+
+// Lambda equivalent: s -&gt; String.valueOf(s)
+List&lt;String&gt; asStrings = codes.stream()
+    .map(String::valueOf)
+    .toList();
+
+// 2. BOUND instance method reference
+// A specific object instance is captured &mdash; method called on THAT object
+AuditLogger logger = new AuditLogger("bet-service");
+// Lambda equivalent: bet -&gt; logger.log(bet)
+settledBets.forEach(logger::log);           // logger is the bound instance
+
+// 3. UNBOUND instance method reference
+// No captured instance &mdash; method is called on each STREAM ELEMENT
+// Lambda equivalent: account -&gt; account.getBalance()
+List&lt;BigDecimal&gt; balances = accounts.stream()
+    .map(Account::getBalance)               // getBalance() on each Account
+    .toList();
+
+// Lambda equivalent: s -&gt; s.toUpperCase()
+List&lt;String&gt; upper = currencies.stream()
+    .map(String::toUpperCase)
+    .toList();
+
+// Two-param unbound: (a, b) -&gt; a.compareTo(b)
+transactions.sort(
+    Comparator.comparing(Transaction::getAmount)
+              .thenComparing(Transaction::getTimestamp));
+
+// 4. CONSTRUCTOR reference
+// Lambda equivalent: dto -&gt; new Account(dto)
+List&lt;Account&gt; accounts = dtos.stream()
+    .map(Account::new)                      // calls Account(AccountDto)
+    .toList();</pre>
+
+<div class="callout warn">
+  <strong>When NOT to use method references</strong>
+  If the lambda chains two calls (<code>t -&gt; t.getAmount().abs()</code>), transforms parameters, or adds a conditional &mdash; there is no method reference for that. Forcing one adds a helper method just to make syntax shorter. Keep method references for true delegation: "call exactly this named operation on each element."
+</div>
+
+<!-- ===== 5. FUNCTION COMPOSITION ===== -->
+<h2>5. Function Composition</h2>
+<p>Functional interfaces compose &mdash; you assemble larger pipelines from small, named pieces without nesting calls. This is the functional equivalent of the Strategy pattern: behaviour is a first-class value you can pass, combine, and test independently.</p>
+
+<pre>// Function.andThen &mdash; apply f first, then pass result to g
+// f.andThen(g) = x -&gt; g(f(x))
+Function&lt;String, String&gt; trim  = String::trim;
+Function&lt;String, String&gt; upper = String::toUpperCase;
+Function&lt;String, String&gt; clean = trim.andThen(upper);
+clean.apply("  gb29 nwbk ...  "); // &rarr; "GB29 NWBK ..."
+
+// Function.compose &mdash; apply g FIRST, then f (reverse of andThen)
+// f.compose(g) = x -&gt; f(g(x))
+Function&lt;String, String&gt; cleanAlt = upper.compose(trim); // same result
+
+// Chain multiple transformations
+Function&lt;String, BigDecimal&gt; parseAmount =
+    ((Function&lt;String, String&gt;) String::trim)
+        .andThen(String::toUpperCase)
+        .andThen(s -&gt; s.replace(",", ""))
+        .andThen(BigDecimal::new);
+
+parseAmount.apply("  1,234.56  "); // &rarr; BigDecimal("1234.56")</pre>
+
+<pre>// Predicate.and() / or() / negate() &mdash; compose boolean conditions
+Predicate&lt;Bet&gt; isHighStake =
+    bet -&gt; bet.getStake().compareTo(BigDecimal.valueOf(500)) &gt; 0;
+Predicate&lt;Bet&gt; isInPlay    = Bet::isInPlay;
+Predicate&lt;Bet&gt; isSuspect   = Bet::isFlaggedForReview;
+
+// Compose &mdash; readable, no nested ifs
+Predicate&lt;Bet&gt; requiresManualReview =
+    isHighStake.and(isInPlay).or(isSuspect);
+
+List&lt;Bet&gt; flagged = bets.stream()
+    .filter(requiresManualReview)
+    .toList();
+
+// Negate
+List&lt;Bet&gt; normal = bets.stream()
+    .filter(requiresManualReview.negate())
+    .toList();</pre>
+
+<div class="compare-grid">
+  <div>
+    <div class="compare-label">&#x26D4; Imperative &mdash; nested ifs, no reuse</div>
+    <pre>List&lt;Bet&gt; flagged = new ArrayList&lt;&gt;();
+for (Bet bet : bets) {
+    boolean high  = bet.getStake()
+        .compareTo(BigDecimal.valueOf(500)) &gt; 0;
+    boolean live  = bet.isInPlay();
+    boolean alert = bet.isFlaggedForReview();
+    if ((high &amp;&amp; live) || alert) {
+        flagged.add(bet);
+    }
+}
+// Add 4th rule = edit this loop, re-test all</pre>
+  </div>
+  <div>
+    <div class="compare-label">&#x2705; Composed predicates &mdash; extend by adding one line</div>
+    <pre>Predicate&lt;Bet&gt; requiresManualReview =
+    isHighStake
+        .and(isInPlay)
+        .or(isSuspect);
+        // .or(newRule) &mdash; one addition, nothing else changes
+
+List&lt;Bet&gt; flagged = bets.stream()
+    .filter(requiresManualReview)
+    .toList();
+// Each predicate is named, testable in isolation</pre>
+  </div>
+</div>
+
+<div class="callout pass">
+  <strong>This is the Open/Closed Principle (OCP) in practice</strong>
+  OCP from SOLID: open for extension, closed for modification. Composed predicates achieve this without inheritance &mdash; add a new rule by composing, not by editing existing conditions.
+</div>
+
+<!-- ===== 6. CLOSURES ===== -->
+<h2>6. Closures &amp; Effectively Final</h2>
+<p>A lambda can reference variables from the enclosing scope &mdash; it "closes over" them. Java requires those variables to be <strong>effectively final</strong>: assigned once, never reassigned after initialisation.</p>
+
+<pre>// GOOD &mdash; threshold assigned once, never reassigned &rarr; effectively final
+BigDecimal threshold = config.getHighValueThreshold();
+Predicate&lt;Transaction&gt; isHighValue =
+    tx -&gt; tx.getAmount().compareTo(threshold) &gt; 0; // OK
+
+// BAD &mdash; compile error
+BigDecimal threshold = BigDecimal.valueOf(1000);
+threshold = config.getOverride();             // &larr; reassignment
+Predicate&lt;Transaction&gt; isHighValue =
+    tx -&gt; tx.getAmount().compareTo(threshold) &gt; 0;
+// ERROR: local variable threshold defined in an enclosing scope
+//        must be final or effectively final</pre>
+
+<div class="callout warn">
+  <strong>Why effectively final?</strong>
+  Lambdas may execute on a different thread or at a later time than their declaration site. If a captured local variable could change between declaration and execution, the lambda would observe inconsistent state &mdash; a data race with no synchronisation. Effectively final gives the compiler a guarantee: the value the lambda sees is always the value at capture time.
+</div>
+
+<pre>// Workaround 1 &mdash; assign to a new final-looking variable
+BigDecimal base     = BigDecimal.valueOf(1000);
+BigDecimal override = config.getOverride();
+BigDecimal threshold = override != null ? override : base; // final from here
+Predicate&lt;Transaction&gt; isHighValue =
+    tx -&gt; tx.getAmount().compareTo(threshold) &gt; 0; // OK
+
+// Workaround 2 &mdash; pass as a method parameter (cleanest)
+// Method params are effectively final unless explicitly reassigned
+private Predicate&lt;Transaction&gt; highValueFilter(BigDecimal threshold) {
+    return tx -&gt; tx.getAmount().compareTo(threshold) &gt; 0;
+}
+// Caller injects the threshold; lambda captures the param &mdash; always final.
+
+// Workaround 3 &mdash; AtomicReference (avoid in hot paths &mdash; adds indirection)
+AtomicReference&lt;BigDecimal&gt; thresholdRef =
+    new AtomicReference&lt;&gt;(config.getHighValueThreshold());
+thresholdRef.set(config.getOverride()); // mutate via ref; ref itself is final
+Predicate&lt;Transaction&gt; isHighValue =
+    tx -&gt; tx.getAmount().compareTo(thresholdRef.get()) &gt; 0;
+// thresholdRef variable never reassigned &rarr; effectively final</pre>
+
+<!-- ===== QUICK REFERENCE ===== -->
+<h2>Quick Reference</h2>
+<table>
+  <thead><tr><th>Need to&hellip;</th><th>Use</th><th>Example</th></tr></thead>
+  <tbody>
+    <tr><td>Test a condition</td><td><code>Predicate&lt;T&gt;</code></td><td><code>tx -&gt; tx.getAmount().signum() &gt; 0</code></td></tr>
+    <tr><td>Transform a value</td><td><code>Function&lt;T,R&gt;</code></td><td><code>Account::getBalance</code></td></tr>
+    <tr><td>Perform a side effect</td><td><code>Consumer&lt;T&gt;</code></td><td><code>repo::save</code></td></tr>
+    <tr><td>Produce a value lazily</td><td><code>Supplier&lt;T&gt;</code></td><td><code>BetSlip::new</code></td></tr>
+    <tr><td>Combine two values</td><td><code>BiFunction&lt;T,U,R&gt;</code></td><td><code>(amount, rate) -&gt; amount.multiply(rate)</code></td></tr>
+    <tr><td>Call a static method</td><td><code>ClassName::staticMethod</code></td><td><code>TransactionValidator::isValid</code></td></tr>
+    <tr><td>Call method on element</td><td><code>ClassName::instanceMethod</code></td><td><code>String::toUpperCase</code></td></tr>
+    <tr><td>Call method on object</td><td><code>object::instanceMethod</code></td><td><code>logger::log</code></td></tr>
+    <tr><td>Create instances</td><td><code>ClassName::new</code></td><td><code>Account::new</code></td></tr>
+    <tr><td>Compose conditions</td><td><code>Predicate.and/or/negate</code></td><td><code>isActive.and(isOverdrawn)</code></td></tr>
+    <tr><td>Chain transformations</td><td><code>Function.andThen</code></td><td><code>trim.andThen(upper)</code></td></tr>
+  </tbody>
+</table>
+
+<!-- ===== QUIZ ===== -->
+<h2>Quiz</h2>
+<div class="quiz">
+
+  <div class="question" id="q1">
+    <p>Q1. Which built-in functional interface has the signature <code>T &rarr; boolean</code>?</p>
+    <ul class="options" data-correct="2">
+      <li><code>Function&lt;T,R&gt;</code> &mdash; transforms T to a different type R</li>
+      <li><code>Predicate&lt;T&gt;</code> &mdash; tests a condition on T, returns boolean</li>
+      <li><code>Consumer&lt;T&gt;</code> &mdash; accepts T and returns void</li>
+      <li><code>Supplier&lt;T&gt;</code> &mdash; takes no input and returns T</li>
+    </ul>
+    <div class="explanation">
+      <code>Predicate&lt;T&gt;</code> has abstract method <code>boolean test(T t)</code>. It takes a T and returns a boolean &mdash; used for filtering and validation.
+      <code>Function&lt;T,R&gt;</code> transforms to a different type R. <code>Consumer&lt;T&gt;</code> returns void. <code>Supplier&lt;T&gt;</code> takes no arguments.
+    </div>
+  </div>
+
+  <div class="question" id="q2">
+    <p>Q2. What does <code>f.andThen(g)</code> do for two Functions f and g?</p>
+    <ul class="options" data-correct="1">
+      <li>Applies f first, then passes f&rsquo;s result as input to g &mdash; equivalent to <code>x -&gt; g(f(x))</code></li>
+      <li>Applies g first, then passes g&rsquo;s result as input to f &mdash; equivalent to <code>x -&gt; f(g(x))</code></li>
+      <li>Applies f and g to the same input in parallel, then combines both results</li>
+      <li>Returns a new Function that skips f and only calls g on the input</li>
+    </ul>
+    <div class="explanation">
+      <code>f.andThen(g)</code> is the pipeline <code>x -&gt; g(f(x))</code>: f runs first, its output is passed to g.
+      <code>f.compose(g)</code> is the reverse: <code>x -&gt; f(g(x))</code> &mdash; g first, then f.
+      Use <code>andThen</code> when you want left-to-right reading order.
+    </div>
+  </div>
+
+  <div class="question" id="q3">
+    <p>Q3. Which variables can a lambda capture from the enclosing scope?</p>
+    <ul class="options" data-correct="3">
+      <li>Any local variable, including those that are reassigned later</li>
+      <li>Only instance fields of the enclosing class, never local variables</li>
+      <li>Only effectively final local variables &mdash; assigned once, never reassigned after initialisation</li>
+      <li>Only static fields declared at class level</li>
+    </ul>
+    <div class="explanation">
+      Captured local variables must be <em>effectively final</em>: they may not be reassigned after the point of first assignment.
+      This prevents data races when the lambda runs on a different thread. Instance fields (via <code>this</code>) and static fields are freely accessible because the lambda holds a reference, not a snapshot.
+    </div>
+  </div>
+
+  <div class="question" id="q4">
+    <p>Q4. <code>Account::getBalance</code> used in <code>.map(Account::getBalance)</code> is which type of method reference?</p>
+    <ul class="options" data-correct="2">
+      <li>Static method reference &mdash; calls a static method on the Account class</li>
+      <li>Unbound instance method reference &mdash; <code>getBalance()</code> is called on each Account element in the stream</li>
+      <li>Bound instance method reference &mdash; a specific Account instance is captured at declaration time</li>
+      <li>Constructor reference &mdash; creates new Account instances from some input</li>
+    </ul>
+    <div class="explanation">
+      <code>Account::getBalance</code> is <em>unbound</em>: no specific Account instance is captured.
+      When used in a stream, the runtime calls <code>getBalance()</code> on each element as it flows through.
+      A <em>bound</em> reference would be <code>myAccount::getBalance</code> where <code>myAccount</code> is a specific captured variable.
+    </div>
+  </div>
+
+  <div class="question" id="q5">
+    <p>Q5. What does <code>p.negate().test(3)</code> return if <code>Predicate&lt;Integer&gt; p = x -&gt; x &gt; 5</code>?</p>
+    <ul class="options" data-correct="1">
+      <li><code>true</code> &mdash; 3 is not &gt; 5 so p.test(3) is false; negate() flips it to true</li>
+      <li><code>false</code> &mdash; 3 is not &gt; 5 so the result stays false</li>
+      <li>Compile error &mdash; <code>negate()</code> is not available on <code>Predicate</code></li>
+      <li>Runtime exception &mdash; integer comparison throws for unboxed types</li>
+    </ul>
+    <div class="explanation">
+      <code>p.test(3)</code> evaluates <code>3 &gt; 5</code> = <code>false</code>.
+      <code>p.negate()</code> returns a new Predicate that inverts the result, so <code>p.negate().test(3)</code> = <code>!false</code> = <code>true</code>.
+      <code>negate()</code> is a default method on <code>Predicate&lt;T&gt;</code>, available since Java 8.
+    </div>
+  </div>
+
+</div>
+
+<footer>
+  Lesson 2 of 3 &middot; Java Lambdas &amp; Functional Interfaces &middot;
+  <a href="0003-streams.html" style="color:var(--accent)">Next: Streams &amp; Collectors &rarr;</a>
+</footer>
+
+<script>
+document.querySelectorAll('.options').forEach(ul => {
+  const correct = parseInt(ul.dataset.correct, 10);
+  ul.querySelectorAll('li').forEach((li, i) => {
+    li.addEventListener('click', () => {
+      if (ul.dataset.answered) return;
+      ul.dataset.answered = '1';
+      const idx = i + 1;
+      if (idx === correct) {
+        li.classList.add('correct');
+      } else {
+        li.classList.add('wrong');
+        ul.querySelectorAll('li')[correct - 1].classList.add('reveal');
+      }
+      const exp = ul.closest('.question').querySelector('.explanation');
+      if (exp) exp.classList.add('visible');
+    });
+  });
+});
+</script>
+</body>
+</html>

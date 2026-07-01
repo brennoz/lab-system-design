@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Java Streams &mdash; Pipeline, Collectors &amp; Optional</title>
+<style>
+  :root{--ink:#1a1a1a;--muted:#555;--border:#ddd;--bg-code:#f7f7f5;--accent:#2563eb;--pass:#16a34a;--fail:#dc2626;--warn:#d97706;--bg:#fefefe;--sidebar:#f3f4f6}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Georgia',serif;font-size:17px;line-height:1.7;color:var(--ink);background:var(--bg);max-width:860px;margin:0 auto;padding:3rem 2rem 6rem}
+  h1{font-size:2rem;line-height:1.2;margin-bottom:.4rem}
+  h2{font-size:1.35rem;margin:2.5rem 0 .75rem;border-bottom:1px solid var(--border);padding-bottom:.3rem}
+  h3{font-size:1.05rem;margin:1.5rem 0 .4rem;color:var(--muted)}
+  p{margin-bottom:1rem}
+  .meta{color:var(--muted);font-size:.85rem;font-family:monospace;margin-bottom:2rem}
+  .lesson-nav{font-size:.85rem;margin-bottom:3rem;color:var(--muted)}
+  .lesson-nav a{color:var(--accent);text-decoration:none}
+  .callout{border-left:4px solid var(--accent);background:var(--sidebar);padding:.9rem 1.2rem;margin:1.5rem 0;border-radius:0 6px 6px 0}
+  .callout.warn{border-color:var(--warn);background:#fffbeb}
+  .callout.pass{border-color:var(--pass);background:#f0fdf4}
+  .callout.fail{border-color:var(--fail);background:#fff1f2}
+  .callout strong{display:block;margin-bottom:.3rem;font-family:monospace;font-size:.88rem}
+  pre{background:var(--bg-code);border:1px solid var(--border);border-radius:6px;padding:1.2rem 1.4rem;overflow-x:auto;font-size:.83rem;line-height:1.6;margin:1rem 0 1.5rem;font-family:'Menlo','Consolas',monospace}
+  code{font-family:'Menlo','Consolas',monospace;font-size:.87em;background:var(--bg-code);padding:.1em .35em;border-radius:3px}
+  table{border-collapse:collapse;width:100%;margin:1rem 0 1.5rem;font-size:.9rem}
+  th{text-align:left;padding:.5rem .8rem;border-bottom:2px solid var(--border);background:var(--sidebar)}
+  td{padding:.45rem .8rem;border-bottom:1px solid var(--border);vertical-align:top}
+  .quiz{margin:2rem 0}
+  .question{margin:1.5rem 0}
+  .question p{font-weight:bold;margin-bottom:.75rem}
+  .options{list-style:none}
+  .options li{padding:.6rem 1rem;border:1px solid var(--border);border-radius:5px;margin-bottom:.4rem;cursor:pointer;transition:background .15s;font-size:.92rem}
+  .options li:hover{background:var(--sidebar)}
+  .options li.correct{background:#dcfce7;border-color:var(--pass)}
+  .options li.wrong{background:#fee2e2;border-color:var(--fail)}
+  .options li.reveal{background:#dcfce7;border-color:var(--pass);opacity:.6}
+  .explanation{font-size:.88rem;color:var(--muted);margin-top:.5rem;display:none;padding:.5rem .8rem;background:var(--sidebar);border-radius:4px}
+  .explanation.visible{display:block}
+  footer{margin-top:4rem;border-top:1px solid var(--border);padding-top:1.5rem;font-size:.82rem;color:var(--muted)}
+  .compare-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin:1rem 0 1.5rem}
+  .compare-grid pre{margin:0}
+  .compare-label{font-size:.78rem;font-family:monospace;color:var(--muted);margin-bottom:.25rem;font-weight:bold}
+  @media(max-width:640px){.compare-grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="lesson-nav">
+  <a href="../../">&#8592; Topics</a> &nbsp;&middot;&nbsp;
+  <a href="0002-lambdas.html">&#8592; Previous: Lambdas</a>
+</div>
+<h1>Java Streams &mdash; Pipeline, Collectors &amp; Optional</h1>
+<div class="meta">Category: Java &middot; Topic: Streams &amp; Collectors &middot; Est. time: 30 min &middot; Lesson 3 of 3</div>
+
+<p>The Streams API, introduced in Java 8, is a declarative way to process sequences of data. You describe <em>what</em> you want &mdash; filter, transform, group, aggregate &mdash; and the API handles iteration internally. Streams eliminate most hand-written for-loops, remove mutable accumulators, and make the logic of a data transformation visible in one expression. This lesson also covers <code>Optional</code>, the companion type that replaces nullable returns, and the primitive stream variants that avoid boxing overhead.</p>
+
+<!-- ===== 1. WHAT IS A STREAM ===== -->
+<h2>1. What Is a Stream?</h2>
+<p>A <code>Stream&lt;T&gt;</code> is a lazily-evaluated pipeline over a sequence of elements. It is <strong>not a data structure</strong> &mdash; it does not store elements. Intermediate operations describe transformations; nothing executes until a terminal operation is called.</p>
+
+<div class="callout">
+  <strong>Three parts: source &rarr; intermediate operations &rarr; terminal operation</strong>
+  <code>accounts.stream()            // source: Collection
+    .filter(Account::isActive)   // intermediate: lazy
+    .map(Account::getBalance)    // intermediate: lazy
+    .reduce(BigDecimal.ZERO,     // terminal: triggers ONE pass through the data
+            BigDecimal::add);</code>
+</div>
+
+<div class="compare-grid">
+  <div>
+    <div class="compare-label">&#x26D4; Imperative &mdash; mutable accumulator, iteration explicit</div>
+    <pre>BigDecimal total = BigDecimal.ZERO;
+for (Account account : accounts) {
+    if (account.isActive()) {
+        total = total.add(
+            account.getBalance());
+    }
+}
+// Who owns the loop? Who owns the filter?
+// Logic and iteration are tangled.</pre>
+  </div>
+  <div>
+    <div class="compare-label">&#x2705; Stream pipeline &mdash; no variables, pure expression</div>
+    <pre>BigDecimal total = accounts.stream()
+    .filter(Account::isActive)
+    .map(Account::getBalance)
+    .reduce(BigDecimal.ZERO,
+            BigDecimal::add);
+// Read left to right: take accounts,
+// keep active ones, get balances, sum them.
+// No mutable state, no loop variable.</pre>
+  </div>
+</div>
+
+<div class="callout warn">
+  <strong>Streams are single-use</strong>
+  Once a terminal operation runs, the stream is consumed and cannot be reused. To process the same data twice, call <code>.stream()</code> on the source again. Attempting to reuse a stream throws <code>IllegalStateException: stream has already been operated upon or closed</code>.
+</div>
+
+<!-- ===== 2. CREATING STREAMS ===== -->
+<h2>2. Creating Streams</h2>
+
+<pre>// From a Collection (most common)
+List&lt;Bet&gt; bets = betRepository.findAll();
+Stream&lt;Bet&gt; stream = bets.stream();
+
+// From an array
+String[] currencies = {"GBP", "EUR", "USD"};
+Stream&lt;String&gt; currencyStream = Arrays.stream(currencies);
+
+// From known values
+Stream&lt;String&gt; statuses =
+    Stream.of("PENDING", "APPROVED", "DECLINED");
+
+// Ranges &mdash; returns IntStream, not Stream&lt;Integer&gt; (no boxing)
+IntStream range     = IntStream.range(0, 100);         // 0..99 (exclusive end)
+IntStream inclusive = IntStream.rangeClosed(1, 12);    // 1..12 (months)
+
+// Infinite stream &mdash; generate (stateless, each element independent)
+Stream&lt;UUID&gt;       ids    = Stream.generate(UUID::randomUUID).limit(10);
+Stream&lt;BigDecimal&gt; zeroes = Stream.generate(() -&gt; BigDecimal.ZERO);
+
+// Infinite stream &mdash; iterate (each element derived from previous, like a loop)
+Stream&lt;Integer&gt; powers  = Stream.iterate(1, x -&gt; x * 2).limit(10); // 1,2,4,8,...
+Stream&lt;Long&gt;    seconds = Stream.iterate(0L, n -&gt; n + 1);           // 0,1,2,...
+
+// Java 9+ iterate with predicate (bounded; avoids limit())
+Stream&lt;Integer&gt; nTo99 =
+    Stream.iterate(0, n -&gt; n &lt; 100, n -&gt; n + 1); // like for(int n=0;n&lt;100;n++)
+
+// Empty stream (useful as a no-op fallback)
+Stream&lt;Bet&gt; empty = Stream.empty();</pre>
+
+<!-- ===== 3. INTERMEDIATE OPERATIONS ===== -->
+<h2>3. Intermediate Operations</h2>
+<p>Intermediate operations return a new stream. They are <strong>lazy</strong> &mdash; calling them does not process any elements. Processing only happens when a terminal operation pulls elements through the pipeline.</p>
+
+<table>
+  <thead><tr><th>Operation</th><th>Effect</th><th>Type change</th></tr></thead>
+  <tbody>
+    <tr><td><code>filter(Predicate)</code></td><td>Keep elements matching predicate</td><td><code>Stream&lt;T&gt; &rarr; Stream&lt;T&gt;</code></td></tr>
+    <tr><td><code>map(Function)</code></td><td>Transform each element T &rarr; R</td><td><code>Stream&lt;T&gt; &rarr; Stream&lt;R&gt;</code></td></tr>
+    <tr><td><code>flatMap(Function)</code></td><td>Map each element to a stream, flatten all into one</td><td><code>Stream&lt;T&gt; &rarr; Stream&lt;R&gt;</code></td></tr>
+    <tr><td><code>distinct()</code></td><td>Remove duplicates (uses equals/hashCode)</td><td><code>Stream&lt;T&gt; &rarr; Stream&lt;T&gt;</code></td></tr>
+    <tr><td><code>sorted()</code></td><td>Natural order or custom Comparator</td><td><code>Stream&lt;T&gt; &rarr; Stream&lt;T&gt;</code></td></tr>
+    <tr><td><code>limit(n)</code></td><td>Take only the first n elements</td><td><code>Stream&lt;T&gt; &rarr; Stream&lt;T&gt;</code></td></tr>
+    <tr><td><code>skip(n)</code></td><td>Drop the first n elements</td><td><code>Stream&lt;T&gt; &rarr; Stream&lt;T&gt;</code></td></tr>
+    <tr><td><code>peek(Consumer)</code></td><td>Inspect each element without modifying it</td><td><code>Stream&lt;T&gt; &rarr; Stream&lt;T&gt;</code></td></tr>
+  </tbody>
+</table>
+
+<h3>filter &mdash; keep matching elements</h3>
+<div class="compare-grid">
+  <div>
+    <div class="compare-label">&#x26D4; Imperative</div>
+    <pre>List&lt;Transaction&gt; approved =
+    new ArrayList&lt;&gt;();
+for (Transaction tx : all) {
+    if (tx.getStatus() == APPROVED
+            &amp;&amp; tx.getAmount()
+               .compareTo(BigDecimal
+                   .valueOf(100)) &gt; 0) {
+        approved.add(tx);
+    }
+}</pre>
+  </div>
+  <div>
+    <div class="compare-label">&#x2705; filter</div>
+    <pre>List&lt;Transaction&gt; approved = all.stream()
+    .filter(tx -&gt; tx.getStatus() == APPROVED)
+    .filter(tx -&gt; tx.getAmount()
+        .compareTo(BigDecimal.valueOf(100)) &gt; 0)
+    .toList();
+// Two predicates composed as chained filters
+// Each is readable independently</pre>
+  </div>
+</div>
+
+<h3>map &mdash; transform each element</h3>
+<pre>// Extract one field from each object
+List&lt;String&gt; ibans = accounts.stream()
+    .map(Account::getIban)        // Account -&gt; String
+    .toList();
+
+// Apply a calculation
+List&lt;BigDecimal&gt; netPayouts = bets.stream()
+    .filter(Bet::isWon)
+    .map(bet -&gt; bet.getStake().multiply(bet.getOdds()))
+    .toList();</pre>
+
+<h3>flatMap &mdash; flatten nested collections</h3>
+<div class="compare-grid">
+  <div>
+    <div class="compare-label">&#x26D4; Imperative &mdash; nested loops</div>
+    <pre>// Each Customer has multiple Accounts
+List&lt;Account&gt; all = new ArrayList&lt;&gt;();
+for (Customer c : customers) {
+    for (Account a : c.getAccounts()) {
+        all.add(a);
+    }
+}
+// Two loops, one accumulator</pre>
+  </div>
+  <div>
+    <div class="compare-label">&#x2705; flatMap &mdash; one expression</div>
+    <pre>// map would give Stream&lt;List&lt;Account&gt;&gt;
+// flatMap flattens to Stream&lt;Account&gt;
+List&lt;Account&gt; all = customers.stream()
+    .flatMap(c -&gt; c.getAccounts().stream())
+    .toList();
+// Think: map each to a stream, then flatten</pre>
+  </div>
+</div>
+
+<div class="callout">
+  <strong>flatMap vs map: the rule</strong>
+  If your mapping function returns a <code>Stream</code> (or a <code>Collection</code> you want to treat as one), use <code>flatMap</code>.
+  <code>map</code> gives <code>Stream&lt;List&lt;Account&gt;&gt;</code>.
+  <code>flatMap</code> gives <code>Stream&lt;Account&gt;</code>.
+  It is analogous to <code>Optional.flatMap</code> &mdash; both "flatten" a nested container.
+</div>
+
+<h3>distinct, sorted, limit, skip</h3>
+<pre>// distinct &mdash; deduplication by equals()/hashCode()
+List&lt;String&gt; currencies = transactions.stream()
+    .map(Transaction::getCurrency)
+    .distinct()        // unique currencies only
+    .sorted()          // alphabetical order
+    .toList();         // ["EUR", "GBP", "USD"]
+
+// sorted with Comparator
+List&lt;Bet&gt; topBets = bets.stream()
+    .sorted(Comparator.comparing(Bet::getStake).reversed())
+    .limit(10)         // top 10 highest-stake bets
+    .toList();
+
+// skip + limit &mdash; pagination
+int page = 2;
+int pageSize = 20;
+List&lt;Transaction&gt; page2 = transactions.stream()
+    .sorted(Comparator.comparing(Transaction::getTimestamp).reversed())
+    .skip((long) page * pageSize)   // skip first 2 pages
+    .limit(pageSize)                // take next 20
+    .toList();</pre>
+
+<h3>peek &mdash; inspect without modifying</h3>
+<pre>// peek is for debugging mid-pipeline &mdash; NOT for side effects in production
+List&lt;Bet&gt; result = bets.stream()
+    .filter(Bet::isHighValue)
+    .peek(bet -&gt; log.debug("high-value: {}", bet.getId())) // log before transform
+    .map(riskEngine::assess)
+    .peek(bet -&gt; log.debug("after risk: {}", bet.getRiskScore()))
+    .filter(bet -&gt; bet.getRiskScore() &lt; 0.9)
+    .toList();</pre>
+
+<div class="callout warn">
+  <strong>peek is for debugging only</strong>
+  Never use <code>peek</code> for real side effects (saving, publishing). It may not execute at all &mdash; the runtime can optimise away intermediate ops if the terminal doesn't need them. Use <code>forEach</code> for intentional side effects.
+</div>
+
+<!-- ===== 4. TERMINAL OPERATIONS ===== -->
+<h2>4. Terminal Operations</h2>
+<p>Terminal operations consume the stream and produce a result or side effect. After a terminal operation, the stream is closed. These are the only operations that actually trigger processing.</p>
+
+<table>
+  <thead><tr><th>Operation</th><th>Returns</th><th>Use for</th></tr></thead>
+  <tbody>
+    <tr><td><code>collect(Collector)</code></td><td>Varies</td><td>Accumulate into List, Map, Set, String, etc.</td></tr>
+    <tr><td><code>forEach(Consumer)</code></td><td><code>void</code></td><td>Side effects on each element</td></tr>
+    <tr><td><code>reduce(identity, BinaryOp)</code></td><td><code>T</code></td><td>Fold into a single value (sum, product, max)</td></tr>
+    <tr><td><code>count()</code></td><td><code>long</code></td><td>Number of elements</td></tr>
+    <tr><td><code>min(Comparator)</code></td><td><code>Optional&lt;T&gt;</code></td><td>Smallest element</td></tr>
+    <tr><td><code>max(Comparator)</code></td><td><code>Optional&lt;T&gt;</code></td><td>Largest element</td></tr>
+    <tr><td><code>findFirst()</code></td><td><code>Optional&lt;T&gt;</code></td><td>First element (respects order)</td></tr>
+    <tr><td><code>findAny()</code></td><td><code>Optional&lt;T&gt;</code></td><td>Any element (parallel-friendly)</td></tr>
+    <tr><td><code>anyMatch(Predicate)</code></td><td><code>boolean</code></td><td>Short-circuits on first match</td></tr>
+    <tr><td><code>allMatch(Predicate)</code></td><td><code>boolean</code></td><td>Short-circuits on first non-match</td></tr>
+    <tr><td><code>noneMatch(Predicate)</code></td><td><code>boolean</code></td><td>True if no element matches</td></tr>
+    <tr><td><code>toList()</code> (Java 16+)</td><td><code>List&lt;T&gt;</code></td><td>Shorthand for <code>collect(Collectors.toUnmodifiableList())</code></td></tr>
+  </tbody>
+</table>
+
+<h3>reduce &mdash; fold into a single value</h3>
+<div class="compare-grid">
+  <div>
+    <div class="compare-label">&#x26D4; Imperative sum</div>
+    <pre>BigDecimal total = BigDecimal.ZERO;
+for (Account account : accounts) {
+    if (account.isActive()) {
+        total = total.add(
+            account.getBalance());
+    }
+}</pre>
+  </div>
+  <div>
+    <div class="compare-label">&#x2705; reduce</div>
+    <pre>BigDecimal total = accounts.stream()
+    .filter(Account::isActive)
+    .map(Account::getBalance)
+    .reduce(BigDecimal.ZERO,   // identity (start value)
+            BigDecimal::add);  // accumulator</pre>
+  </div>
+</div>
+
+<pre>// reduce with no identity &mdash; returns Optional (empty stream is handled)
+Optional&lt;BigDecimal&gt; maxStake = bets.stream()
+    .map(Bet::getStake)
+    .reduce(BigDecimal::max);
+
+// anyMatch / allMatch / noneMatch &mdash; short-circuit early
+boolean anyLarge = transactions.stream()
+    .anyMatch(tx -&gt; tx.getAmount()
+        .compareTo(BigDecimal.valueOf(10_000)) &gt; 0);
+// Stops at the first match &mdash; never reads the whole list
+
+boolean allSettled = bets.stream()
+    .allMatch(bet -&gt; bet.getStatus() == BetStatus.SETTLED);
+
+// count + findFirst
+long pending = transactions.stream()
+    .filter(tx -&gt; tx.getStatus() == PENDING)
+    .count();
+
+Optional&lt;Bet&gt; earliestOpen = bets.stream()
+    .filter(bet -&gt; bet.getStatus() == BetStatus.OPEN)
+    .min(Comparator.comparing(Bet::getPlacedAt));</pre>
+
+<!-- ===== 5. COLLECTORS ===== -->
+<h2>5. Collectors Deep-Dive</h2>
+<p><code>Collectors</code> is a factory class for the most common accumulation strategies. You pass a Collector to <code>collect()</code> &mdash; it defines how elements are folded into a result container.</p>
+
+<h3>toList, toSet, toUnmodifiableList</h3>
+<pre>// Java 16+ shorthand &mdash; always unmodifiable
+List&lt;String&gt; ibans = accounts.stream()
+    .map(Account::getIban)
+    .toList(); // unmodifiable, null-hostile
+
+// Pre-Java 16 / mutable list needed
+List&lt;String&gt; ibans = accounts.stream()
+    .map(Account::getIban)
+    .collect(Collectors.toList()); // mutable ArrayList
+
+// Set (deduplication)
+Set&lt;String&gt; currencies = transactions.stream()
+    .map(Transaction::getCurrency)
+    .collect(Collectors.toSet());</pre>
+
+<h3>toMap &mdash; key/value pairs, requires unique keys</h3>
+<pre>// Simple: each Account maps to itself by IBAN
+Map&lt;String, Account&gt; byIban = accounts.stream()
+    .collect(Collectors.toMap(
+        Account::getIban,           // key extractor
+        Function.identity()         // value extractor (the Account itself)
+    ));
+// Throws IllegalStateException on duplicate key &mdash; fail-fast is intentional
+
+// With merge function &mdash; handle duplicates (keep higher balance)
+Map&lt;String, BigDecimal&gt; maxBalanceByType = accounts.stream()
+    .collect(Collectors.toMap(
+        Account::getType,           // key: account type
+        Account::getBalance,        // value: balance
+        BigDecimal::max             // merge: called when two accounts share a type
+    ));</pre>
+
+<h3>groupingBy &mdash; partition into groups</h3>
+<pre>// Basic: Map&lt;K, List&lt;V&gt;&gt;
+Map&lt;BetStatus, List&lt;Bet&gt;&gt; betsByStatus = bets.stream()
+    .collect(Collectors.groupingBy(Bet::getStatus));
+// betsByStatus.get(PENDING) &rarr; List of all pending bets
+
+// With downstream collector &mdash; count per group
+Map&lt;BetStatus, Long&gt; countByStatus = bets.stream()
+    .collect(Collectors.groupingBy(
+        Bet::getStatus,
+        Collectors.counting()
+    ));
+
+// Sum stakes per market type
+Map&lt;String, BigDecimal&gt; totalStakeByMarket = bets.stream()
+    .collect(Collectors.groupingBy(
+        Bet::getMarketType,
+        Collectors.reducing(
+            BigDecimal.ZERO,
+            Bet::getStake,
+            BigDecimal::add)
+    ));
+
+// Nested grouping: first by status, then by market type
+Map&lt;BetStatus, Map&lt;String, List&lt;Bet&gt;&gt;&gt; nested = bets.stream()
+    .collect(Collectors.groupingBy(
+        Bet::getStatus,
+        Collectors.groupingBy(Bet::getMarketType)
+    ));</pre>
+
+<h3>partitioningBy &mdash; exactly two groups (true/false)</h3>
+<pre>// Split transactions into high-value and normal
+Map&lt;Boolean, List&lt;Transaction&gt;&gt; partitioned = transactions.stream()
+    .collect(Collectors.partitioningBy(
+        tx -&gt; tx.getAmount().compareTo(BigDecimal.valueOf(1000)) &gt; 0
+    ));
+
+List&lt;Transaction&gt; highValue = partitioned.get(true);
+List&lt;Transaction&gt; normal    = partitioned.get(false);
+
+// With downstream: count each partition
+Map&lt;Boolean, Long&gt; counts = bets.stream()
+    .collect(Collectors.partitioningBy(
+        Bet::isWon,
+        Collectors.counting()
+    ));
+long wonCount  = counts.get(true);
+long lostCount = counts.get(false);</pre>
+
+<h3>joining &mdash; concatenate strings</h3>
+<pre>// IBAN list as comma-separated string with brackets
+String ibanList = accounts.stream()
+    .map(Account::getIban)
+    .collect(Collectors.joining(", ", "[", "]"));
+// &rarr; "[GB29NWBK60161331926819, GB56BARC20031253243859, ...]"
+
+// Audit log line
+String betSummary = settledBets.stream()
+    .map(b -&gt; b.getId() + ":" + b.getPayout().toPlainString())
+    .collect(Collectors.joining(" | "));
+// &rarr; "bet-001:120.00 | bet-002:45.50 | ..."</pre>
+
+<h3>counting, summingInt, averagingDouble, summarizingInt</h3>
+<pre>// counting &mdash; equivalent to .count() but usable as a downstream collector
+long total = bets.stream()
+    .collect(Collectors.counting());
+
+// summingInt
+int totalOddsNumerator = bets.stream()
+    .collect(Collectors.summingInt(Bet::getOddsNumerator));
+
+// averagingDouble
+double avgStake = bets.stream()
+    .collect(Collectors.averagingDouble(
+        bet -&gt; bet.getStake().doubleValue()));
+
+// summarizingInt &mdash; count + sum + min + max + average in ONE pass
+IntSummaryStatistics stakeStats = bets.stream()
+    .collect(Collectors.summarizingInt(
+        bet -&gt; bet.getStake().intValue()));
+
+stakeStats.getCount();    // number of bets
+stakeStats.getSum();      // total stakes (pence)
+stakeStats.getMin();      // smallest stake
+stakeStats.getMax();      // largest stake
+stakeStats.getAverage();  // mean stake</pre>
+
+<!-- ===== 6. OPTIONAL ===== -->
+<h2>6. Optional &mdash; Eliminating Null Checks</h2>
+<p><code>Optional&lt;T&gt;</code> is a container that either holds a value or is empty. It makes nullable returns explicit in method signatures and forces callers to decide what to do when no value is present &mdash; instead of crashing with <code>NullPointerException</code>.</p>
+
+<pre>// Creating
+Optional&lt;Account&gt; found    = accountRepo.findById(id); // repo returns Optional
+Optional&lt;Account&gt; present  = Optional.of(account);      // throws NPE if account is null
+Optional&lt;Account&gt; nullable = Optional.ofNullable(maybeNull); // empty if null
+Optional&lt;Account&gt; empty    = Optional.empty();</pre>
+
+<div class="callout fail">
+  <strong>Anti-pattern: isPresent() + get() &mdash; just use orElse</strong>
+  <code>// WRONG &mdash; defeats the purpose of Optional</code>
+  <code>if (found.isPresent()) { return found.get().getBalance(); }</code>
+  <code>// RIGHT &mdash; declarative chain</code>
+  <code>return found.map(Account::getBalance).orElse(BigDecimal.ZERO);</code>
+</div>
+
+<pre>// map &mdash; transform the value if present
+BigDecimal balance = accountRepo.findById(id)
+    .map(Account::getBalance)         // Optional&lt;Account&gt; -&gt; Optional&lt;BigDecimal&gt;
+    .orElse(BigDecimal.ZERO);         // default if empty
+
+// orElseGet &mdash; lazy supplier, only called when empty
+Account account = accountRepo.findById(id)
+    .orElseGet(() -&gt; createGuestAccount()); // expensive call deferred
+
+// orElseThrow &mdash; throw a specific exception if empty
+Account account = accountRepo.findById(id)
+    .orElseThrow(() -&gt; new AccountNotFoundException(id));
+
+// filter &mdash; empty the Optional if condition fails
+Optional&lt;Account&gt; activeWithBalance = accountRepo.findById(id)
+    .filter(Account::isActive)
+    .filter(a -&gt; a.getBalance().compareTo(BigDecimal.ZERO) &gt; 0);
+
+// flatMap &mdash; when map would produce Optional&lt;Optional&lt;T&gt;&gt;
+// getPrimaryAddress() returns Optional&lt;Address&gt;
+Optional&lt;String&gt; city = accountRepo.findById(id)
+    .flatMap(Account::getPrimaryAddress) // flatMap: no double-wrapping
+    .map(Address::getCity);
+
+// ifPresent &mdash; side effect when present, nothing when empty
+accountRepo.findById(id)
+    .ifPresent(acct -&gt; auditLog.recordAccess(acct.getId()));
+
+// ifPresentOrElse (Java 9+) &mdash; both branches in one call
+accountRepo.findById(id)
+    .ifPresentOrElse(
+        acct -&gt; auditLog.recordAccess(acct.getId()),
+        ()   -&gt; log.warn("Account not found: {}", id)
+    );
+
+// or (Java 9+) &mdash; provide an alternative Optional when empty
+Optional&lt;Account&gt; result = primaryRepo.findById(id)
+    .or(() -&gt; archiveRepo.findById(id)); // fallback to archive</pre>
+
+<table>
+  <thead><tr><th>Method</th><th>Input type</th><th>Use for</th></tr></thead>
+  <tbody>
+    <tr><td><code>map(Function)</code></td><td>T &rarr; R</td><td>Transform value, stay in Optional</td></tr>
+    <tr><td><code>flatMap(Function)</code></td><td>T &rarr; Optional&lt;R&gt;</td><td>Chain methods that return Optional</td></tr>
+    <tr><td><code>filter(Predicate)</code></td><td>T &rarr; boolean</td><td>Discard if condition fails</td></tr>
+    <tr><td><code>orElse(T)</code></td><td>default value</td><td>Eager default (always evaluated)</td></tr>
+    <tr><td><code>orElseGet(Supplier)</code></td><td>() &rarr; T</td><td>Lazy default (only if empty)</td></tr>
+    <tr><td><code>orElseThrow(Supplier)</code></td><td>() &rarr; Exception</td><td>Mandatory value, fail fast</td></tr>
+    <tr><td><code>ifPresent(Consumer)</code></td><td>T &rarr; void</td><td>Side effect when present</td></tr>
+    <tr><td><code>ifPresentOrElse</code></td><td>Consumer + Runnable</td><td>Both branches explicit (Java 9+)</td></tr>
+  </tbody>
+</table>
+
+<div class="callout warn">
+  <strong>Optional rules</strong>
+  Never use Optional as a field type (not serialisable). Never use Optional as a method parameter (forces callers to wrap). Never use Optional for collection returns (return empty collection instead). Only use Optional as a method return type to signal that the result may be absent.
+</div>
+
+<!-- ===== 7. PRIMITIVE STREAMS ===== -->
+<h2>7. Primitive Streams &mdash; Avoiding Boxing Overhead</h2>
+<p>For numeric work, <code>Stream&lt;Integer&gt;</code> boxes each int into an <code>Integer</code> object. On millions of elements, that creates millions of short-lived objects and GC pressure. <code>IntStream</code>, <code>LongStream</code>, and <code>DoubleStream</code> work directly with primitives &mdash; no boxing, and they carry built-in aggregate methods.</p>
+
+<pre>// Creating primitive streams
+IntStream ages   = IntStream.of(25, 30, 45, 22);
+IntStream range  = IntStream.range(1, 13);       // months 1..12
+LongStream ids   = LongStream.rangeClosed(1L, 1_000_000L);
+
+// Convert from object stream &mdash; mapToInt avoids autoboxing
+IntStream stakePennies = bets.stream()
+    .mapToInt(bet -&gt; bet.getStake()
+        .multiply(BigDecimal.valueOf(100)).intValue());
+
+// Aggregate operations available directly (no Collectors needed)
+int  totalPennies = stakePennies.sum();          // sum
+long betCount     = bets.stream()
+    .mapToLong(bet -&gt; 1L).sum();                 // count via sum
+OptionalDouble avg = IntStream.range(1, 100).average();
+OptionalInt    max = IntStream.of(10, 30, 20).max();
+IntSummaryStatistics stats = IntStream.of(10, 30, 20).summaryStatistics();
+
+// DoubleStream for odds / probabilities
+DoubleStream odds = DoubleStream.of(1.5, 2.0, 3.75, 1.1);
+double impliedProbSum = odds.map(o -&gt; 1.0 / o).sum();
+// If &gt; 1.0 it is the bookmaker overround (margin)
+
+// mapToObj &mdash; back to object stream
+Stream&lt;String&gt; labels = IntStream.rangeClosed(1, 5)
+    .mapToObj(n -&gt; "Round " + n);  // "Round 1" .. "Round 5"
+
+// boxed() &mdash; back to Stream&lt;Integer&gt;
+List&lt;Integer&gt; list = IntStream.range(0, 5).boxed().toList();</pre>
+
+<div class="callout">
+  <strong>LongStream for IDs and epoch timestamps</strong>
+  Use <code>LongStream</code> when working with IDs, epoch millis, or any counter where int overflows are possible. Snowflake IDs, Unix timestamps, sequence numbers &mdash; all require <code>long</code>. A <code>Stream&lt;Long&gt;</code> adds boxing overhead; <code>LongStream</code> does not.
+</div>
+
+<!-- ===== 8. PARALLEL STREAMS ===== -->
+<h2>8. Parallel Streams</h2>
+<p>Parallel streams split the data across multiple threads in <code>ForkJoinPool.commonPool()</code>. You get parallelism in one method call. The catch: it is only faster for the right workloads, and it is actively harmful for the wrong ones.</p>
+
+<pre>// Enable parallelism with one call
+List&lt;RiskDecision&gt; decisions = bets.parallelStream()
+    .map(riskEngine::evaluate)   // runs on ForkJoinPool threads
+    .toList();
+
+// Or from a sequential stream
+List&lt;RiskDecision&gt; decisions = bets.stream()
+    .parallel()
+    .map(riskEngine::evaluate)
+    .toList();</pre>
+
+<table>
+  <thead><tr><th>Use parallel when&hellip;</th><th>Avoid parallel when&hellip;</th></tr></thead>
+  <tbody>
+    <tr><td>Data set is large (&gt; ~10,000 elements)</td><td>List is small &mdash; thread overhead exceeds gain</td></tr>
+    <tr><td>Each element operation is CPU-bound and expensive</td><td>Each operation is I/O-bound (use CompletableFuture instead)</td></tr>
+    <tr><td>Operations are stateless (no shared state)</td><td>Operations share mutable state (race conditions)</td></tr>
+    <tr><td>Element order in result does not matter</td><td>Ordered output required &mdash; use <code>forEachOrdered</code> or collect then sort</td></tr>
+    <tr><td>No external side effects per element</td><td>Operations add to a shared list &mdash; use <code>collect()</code> instead</td></tr>
+  </tbody>
+</table>
+
+<div class="callout fail">
+  <strong>Race condition with parallelStream() + ArrayList</strong>
+  <pre style="margin-top:.5rem">// BAD &mdash; ArrayList is not thread-safe
+List&lt;RiskDecision&gt; results = new ArrayList&lt;&gt;();
+bets.parallelStream()
+    .map(riskEngine::evaluate)
+    .forEach(results::add);  // multiple threads calling add() concurrently
+                              // ConcurrentModificationException or silent data loss
+
+// GOOD &mdash; let collect() handle thread-safe accumulation
+List&lt;RiskDecision&gt; results = bets.parallelStream()
+    .map(riskEngine::evaluate)
+    .collect(Collectors.toList()); // Collectors are thread-safe internally</pre>
+</div>
+
+<pre>// Parallel + CPU-bound: risk scoring a large batch (good use case)
+List&lt;ScoredBet&gt; scored = largeBetList.parallelStream()
+    .map(riskEngine::scoreWithMachineLearning) // expensive CPU work
+    .sorted(Comparator.comparing(ScoredBet::getScore).reversed())
+    .limit(100)
+    .toList();
+
+// For I/O bound work: use CompletableFuture, not parallelStream
+// parallelStream blocks ForkJoinPool threads on I/O &mdash; wrong tool
+List&lt;PriceDto&gt; prices = marketIds.stream()
+    .map(id -&gt; CompletableFuture.supplyAsync(
+        () -&gt; priceService.getPrice(id), ioExecutor))
+    .toList()
+    .stream()
+    .map(CompletableFuture::join)
+    .toList();</pre>
+
+<!-- ===== QUICK REFERENCE ===== -->
+<h2>Quick Reference</h2>
+<table>
+  <thead><tr><th>Want to&hellip;</th><th>Use</th></tr></thead>
+  <tbody>
+    <tr><td>Keep matching elements</td><td><code>.filter(predicate)</code></td></tr>
+    <tr><td>Transform each element</td><td><code>.map(function)</code></td></tr>
+    <tr><td>Flatten nested collections</td><td><code>.flatMap(e -&gt; e.getItems().stream())</code></td></tr>
+    <tr><td>Collect to list</td><td><code>.toList()</code> (Java 16+) or <code>.collect(Collectors.toList())</code></td></tr>
+    <tr><td>Group by a field</td><td><code>.collect(Collectors.groupingBy(...))</code></td></tr>
+    <tr><td>Split into two groups</td><td><code>.collect(Collectors.partitioningBy(...))</code></td></tr>
+    <tr><td>Key-value map</td><td><code>.collect(Collectors.toMap(k, v))</code></td></tr>
+    <tr><td>Concatenate strings</td><td><code>.collect(Collectors.joining(", "))</code></td></tr>
+    <tr><td>Sum a numeric field</td><td><code>.mapToInt(e -&gt; e.getX()).sum()</code></td></tr>
+    <tr><td>Fold to single value</td><td><code>.reduce(identity, accumulator)</code></td></tr>
+    <tr><td>Check any matches</td><td><code>.anyMatch(predicate)</code></td></tr>
+    <tr><td>Get first element</td><td><code>.findFirst()</code> &rarr; <code>Optional</code></td></tr>
+    <tr><td>Handle nullable return</td><td><code>Optional.map().orElse()</code></td></tr>
+    <tr><td>Avoid boxing on ints</td><td><code>.mapToInt().sum()</code></td></tr>
+    <tr><td>Parallelise CPU work</td><td><code>.parallelStream().collect()</code></td></tr>
+  </tbody>
+</table>
+
+<!-- ===== QUIZ ===== -->
+<h2>Quiz</h2>
+<div class="quiz">
+
+  <div class="question" id="q1">
+    <p>Q1. When does the Java Streams pipeline actually process elements?</p>
+    <ul class="options" data-correct="2">
+      <li>When <code>stream()</code> is called on the collection &mdash; the pipeline starts immediately</li>
+      <li>When a terminal operation is called &mdash; intermediate ops are lazy and only described, not executed, until then</li>
+      <li>When <code>filter()</code> is called &mdash; it is the first operation that touches elements</li>
+      <li>Elements are processed continuously as intermediate ops are chained</li>
+    </ul>
+    <div class="explanation">
+      Streams use <em>lazy evaluation</em>. Calling <code>filter()</code> or <code>map()</code> does not process any elements &mdash; it builds a pipeline description.
+      Processing happens in a single pass only when a terminal operation (<code>collect</code>, <code>reduce</code>, <code>forEach</code>, <code>count</code>, etc.) is invoked.
+      This allows optimisations like short-circuiting: <code>anyMatch</code> stops at the first match without reading the rest of the stream.
+    </div>
+  </div>
+
+  <div class="question" id="q2">
+    <p>Q2. You have <code>Stream&lt;Customer&gt;</code> where each Customer has a <code>List&lt;Account&gt;</code>. Which operation produces a single <code>Stream&lt;Account&gt;</code> from all customers?</p>
+    <ul class="options" data-correct="3">
+      <li><code>.map(Customer::getAccounts)</code> &mdash; transforms each customer into its account list</li>
+      <li><code>.filter(c -&gt; !c.getAccounts().isEmpty())</code> &mdash; removes customers with no accounts</li>
+      <li><code>.flatMap(c -&gt; c.getAccounts().stream())</code> &mdash; maps each customer to a stream of accounts then flattens all into one</li>
+      <li><code>.reduce(Stream.empty(), Stream::concat, Stream::concat)</code></li>
+    </ul>
+    <div class="explanation">
+      <code>flatMap</code> applies a function that returns a <code>Stream</code> and then flattens all the resulting streams into one.
+      <code>map(Customer::getAccounts)</code> would give <code>Stream&lt;List&lt;Account&gt;&gt;</code> &mdash; one list per customer, still nested.
+      <code>flatMap(c -&gt; c.getAccounts().stream())</code> gives <code>Stream&lt;Account&gt;</code> &mdash; all accounts in one flat sequence.
+    </div>
+  </div>
+
+  <div class="question" id="q3">
+    <p>Q3. What type does <code>bets.stream().collect(Collectors.groupingBy(Bet::getStatus))</code> return?</p>
+    <ul class="options" data-correct="1">
+      <li><code>Map&lt;BetStatus, List&lt;Bet&gt;&gt;</code> &mdash; each status maps to the list of bets with that status</li>
+      <li><code>Map&lt;BetStatus, Bet&gt;</code> &mdash; each status maps to a single representative Bet</li>
+      <li><code>List&lt;BetStatus&gt;</code> &mdash; the distinct statuses found in the stream</li>
+      <li><code>Map&lt;String, List&lt;Bet&gt;&gt;</code> &mdash; status toString() is used as the key</li>
+    </ul>
+    <div class="explanation">
+      <code>Collectors.groupingBy(classifier)</code> returns a <code>Map&lt;K, List&lt;V&gt;&gt;</code> where K is the classifier's return type and List holds all elements that produced that key.
+      Here K is <code>BetStatus</code> (return type of <code>Bet::getStatus</code>), so the result is <code>Map&lt;BetStatus, List&lt;Bet&gt;&gt;</code>.
+      The enum itself is used as the key &mdash; not its toString().
+    </div>
+  </div>
+
+  <div class="question" id="q4">
+    <p>Q4. What happens when you call <code>Optional.of(null)</code>?</p>
+    <ul class="options" data-correct="2">
+      <li>Returns an empty Optional &mdash; <code>of()</code> treats null as absent</li>
+      <li>Throws <code>NullPointerException</code> immediately &mdash; <code>of()</code> requires a non-null value</li>
+      <li>Returns <code>Optional.empty()</code> silently after logging a warning</li>
+      <li>Throws <code>IllegalArgumentException</code> &mdash; null is not a valid Optional value</li>
+    </ul>
+    <div class="explanation">
+      <code>Optional.of(T value)</code> requires a non-null argument and throws <code>NullPointerException</code> immediately if null is passed.
+      Use <code>Optional.ofNullable(T value)</code> to safely wrap a potentially null value &mdash; it returns <code>Optional.empty()</code> for null inputs.
+      The distinction enforces that <code>of()</code> is for values you know are non-null; <code>ofNullable()</code> is for uncertain ones.
+    </div>
+  </div>
+
+  <div class="question" id="q5">
+    <p>Q5. You have <code>Stream&lt;Bet&gt;</code> and want to sum the stakes as primitive <code>int</code> values, avoiding autoboxing. Which is correct?</p>
+    <ul class="options" data-correct="1">
+      <li><code>bets.stream().mapToInt(bet -&gt; bet.getStake().intValue()).sum()</code> &mdash; converts to IntStream, no boxing, sum() available directly</li>
+      <li><code>bets.stream().map(Bet::getStake).sum()</code> &mdash; sum() is available on Stream&lt;BigDecimal&gt;</li>
+      <li><code>bets.stream().toIntStream(Bet::getStake).sum()</code> &mdash; toIntStream() is the correct conversion method</li>
+      <li><code>bets.stream().collect(Collectors.summingInt())</code> &mdash; summingInt() needs no argument</li>
+    </ul>
+    <div class="explanation">
+      <code>mapToInt(ToIntFunction)</code> converts a <code>Stream&lt;T&gt;</code> to <code>IntStream</code>, which holds primitives &mdash; no autoboxing.
+      <code>IntStream</code> has <code>sum()</code>, <code>average()</code>, <code>min()</code>, <code>max()</code>, and <code>summaryStatistics()</code> directly.
+      <code>Stream&lt;T&gt;</code> has none of these &mdash; you'd need <code>Collectors.summingInt()</code> which requires the function argument.
+      <code>toIntStream()</code> does not exist.
+    </div>
+  </div>
+
+  <div class="question" id="q6">
+    <p>Q6. Which thread pool does <code>parallelStream()</code> use by default?</p>
+    <ul class="options" data-correct="3">
+      <li>A dedicated parallel pool sized to the number of parallel stream operations currently active</li>
+      <li>The main application thread, blocking until all parallel tasks complete</li>
+      <li><code>ForkJoinPool.commonPool()</code> &mdash; a shared pool sized to available CPU cores minus one</li>
+      <li><code>Executors.newCachedThreadPool()</code> &mdash; an unbounded thread pool managed by the JVM</li>
+    </ul>
+    <div class="explanation">
+      <code>parallelStream()</code> uses <code>ForkJoinPool.commonPool()</code> by default.
+      This pool is shared across the entire JVM and sized to <code>Runtime.getRuntime().availableProcessors() - 1</code>.
+      On a 2-vCPU instance (e.g. t3.small) that is 1 thread &mdash; minimal parallelism.
+      Consequence: a slow parallel stream operation can starve other parallel work in the same JVM (e.g. completable future chains also using the common pool).
+      For production use, pass a custom <code>ForkJoinPool</code> if you need isolation.
+    </div>
+  </div>
+
+</div>
+
+<footer>
+  Lesson 3 of 3 &middot; Java Streams &amp; Collectors &middot;
+  <a href="0002-lambdas.html" style="color:var(--accent)">&larr; Previous: Lambdas</a>
+</footer>
+
+<script>
+document.querySelectorAll('.options').forEach(ul => {
+  const correct = parseInt(ul.dataset.correct, 10);
+  ul.querySelectorAll('li').forEach((li, i) => {
+    li.addEventListener('click', () => {
+      if (ul.dataset.answered) return;
+      ul.dataset.answered = '1';
+      const idx = i + 1;
+      if (idx === correct) {
+        li.classList.add('correct');
+      } else {
+        li.classList.add('wrong');
+        ul.querySelectorAll('li')[correct - 1].classList.add('reveal');
+      }
+      const exp = ul.closest('.question').querySelector('.explanation');
+      if (exp) exp.classList.add('visible');
+    });
+  });
+});
+</script>
+</body>
+</html>
