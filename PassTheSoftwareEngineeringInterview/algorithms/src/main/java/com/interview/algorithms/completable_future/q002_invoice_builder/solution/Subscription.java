@@ -2,17 +2,15 @@ package com.interview.algorithms.completable_future.q002_invoice_builder.solutio
 
 import java.math.BigDecimal;
 
-// Java: Java 21 record — immutable value object.
-// NOTE: This Subscription has only 3 fields (no accountId) — different from q001.
-//       In q002, the accountId is passed separately to buildInvoice() by the caller
-//       because the invoice builder fetches billing address and payment method by accountId
-//       independently of the subscription lookup.
-// WHY: In a real billing system, subscriptions and accounts are separate entities.
-//      Keeping accountId out of Subscription here models the scenario where the caller
-//      already knows the account (e.g. from session context) and uses it for parallel fetches.
-public record Subscription(
-    String id,
-    String planName,
-    // Java: BigDecimal for money — no floating-point precision issues at invoice scale.
-    BigDecimal amount  // invoice total before tax
-) {}
+// NOTE: q002 Subscription has NO accountId field — accountId is passed separately to
+//       buildInvoice(). The three service calls (subscription, address, payment) are all
+//       INDEPENDENT — none depends on another's result. That independence is what makes
+//       allOf() the right tool (vs thenCompose which is for sequential dependencies).
+public record Subscription(String id, String planName, BigDecimal amount) {
+
+    // WHY static factory: provides a named fallback value when the service times out.
+    //     completeOnTimeout(Subscription.empty(), ...) is self-documenting at the call site.
+    public static Subscription empty() {
+        return new Subscription("unknown", "UNKNOWN", BigDecimal.ZERO);
+    }
+}

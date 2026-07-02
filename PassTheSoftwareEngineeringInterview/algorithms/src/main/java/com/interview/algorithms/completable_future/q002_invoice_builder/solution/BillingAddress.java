@@ -1,13 +1,11 @@
 package com.interview.algorithms.completable_future.q002_invoice_builder.solution;
 
-// WHY a separate BillingAddress type: billing addresses live in the account service,
-//     not the subscription service. Fetching it separately (not embedded in Subscription)
-//     allows independent caching and independent service ownership.
-// CF implication: BillingAddress fetch is INDEPENDENT of Subscription and PaymentMethod —
-//     this is exactly what makes allOf() (not thenCompose) the right tool.
-public record BillingAddress(
-    String accountId, // links back to the account
-    String street,
-    String city,
-    String postCode
-) {}
+// WHY separate from Account: billing address is mutable (customer can update it) and
+//     lives in its own service. Fetching it independently allows separate caching and
+//     independent scaling of the address service vs account service.
+public record BillingAddress(String accountId, String street, String city, String postCode) {
+
+    public static BillingAddress unknown() {
+        return new BillingAddress("unknown", "N/A", "N/A", "N/A");
+    }
+}

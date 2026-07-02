@@ -2,19 +2,13 @@ package com.interview.algorithms.completable_future.q002_invoice_builder.solutio
 
 import java.math.BigDecimal;
 
-// Invoice is an aggregate — it brings together data from three separate services
-// (subscription service, billing address service, payment method service).
-// Java: compact accessor method `amount()` is defined inline in the record body.
-//       Records can have methods — they just cannot have mutable instance fields.
-// WHY the amount() accessor: avoids callers having to chain invoice.subscription().amount()
-//     in every place they need the total. Encapsulates the navigation.
-public record Invoice(
-    Subscription subscription,
-    BillingAddress billingAddress,
-    PaymentMethod paymentMethod
-) {
-    // Java: compact method inside a record body — valid Java 16+ syntax.
-    // Delegates to the subscription's amount field.
+// Aggregate output: combines data from three independent services.
+// Java: records can have methods in their body — they just cannot have mutable instance fields.
+//       amount() is a custom accessor that delegates to subscription.amount().
+// WHY amount() on Invoice: avoids callers writing invoice.subscription().amount() everywhere.
+//     Encapsulates the navigation path. If the model changes, only this one method changes.
+public record Invoice(Subscription subscription, BillingAddress billingAddress, PaymentMethod paymentMethod) {
+
     public BigDecimal amount() {
         return subscription.amount();
     }

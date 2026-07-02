@@ -1,55 +1,59 @@
 package com.interview.algorithms.completable_future.q002_invoice_builder.solution;
 
 import java.util.concurrent.CompletableFuture;
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
 
 // REFERENCE SOLUTION — open only after attempting MyAnswer.java
 //
-// Demonstrates: parallel independent CF fetches with allOf().
-// The key insight: when N async calls are INDEPENDENT (no result depends on another),
-// fire ALL of them before waiting for ANY. allOf() coordinates completion.
+// Demonstrates: allOf() for N independent parallel fetches + completeOnTimeout per service.
 public class Solution {
 
     private final SubscriptionService subscriptionService;
     private final BillingAddressService billingAddressService;
     private final PaymentMethodService paymentMethodService;
+    // timeoutMs is a constructor param so tests can pass 10L (fast) and Main.java passes 500L.
+    private final long timeoutMs;
 
     public Solution(SubscriptionService subscriptionService,
                     BillingAddressService billingAddressService,
-                    PaymentMethodService paymentMethodService) {
+                    PaymentMethodService paymentMethodService,
+                    long timeoutMs) {
         this.subscriptionService = subscriptionService;
         this.billingAddressService = billingAddressService;
         this.paymentMethodService = paymentMethodService;
+        this.timeoutMs = timeoutMs;
     }
 
     public CompletableFuture<Invoice> buildInvoice(String subscriptionId, String accountId) {
+        // WHY fire all three before waiting for any:
+        //     Sequential: sub(200ms) → addr(180ms) → pm(150ms) = 530ms total
+        //     Parallel:   all three simultaneously             ≈ 200ms total (slowest wins)
+        // These three calls are INDEPENDENT — no result depends on another's value.
+        CompletableFuture<Subscription> subCf = subscriptionService.getSubscription(subscriptionId)
+            // CF: completeOnTimeout — if the CF does not complete within timeoutMs,
+            //     it is completed NORMALLY with the fallback value (Subscription.empty()).
+            //     The CF never completes exceptionally due to timeout; allOf() always succeeds.
+            // WHY completeOnTimeout (not orTimeout): orTimeout throws TimeoutException,
+            //     which would fail the whole invoice build. completeOnTimeout lets the invoice
+            //     be built with degraded data — better for user experience.
+            .completeOnTimeout(Subscription.empty(), timeoutMs, MILLISECONDS);
 
-        // WHY fire all three BEFORE waiting for any:
-        //     Sequential: sub(300ms) → addr(200ms) → pm(150ms) = 650ms total
-        //     Parallel:   all three in flight simultaneously        = ~300ms total (longest wins)
-        // These three calls are INDEPENDENT — no result depends on another.
-        CompletableFuture<Subscription>   subCf  = subscriptionService.getSubscription(subscriptionId);
-        CompletableFuture<BillingAddress> addrCf = billingAddressService.getBillingAddress(accountId);
-        CompletableFuture<PaymentMethod>  pmCf   = paymentMethodService.getDefaultPaymentMethod(accountId);
+        CompletableFuture<BillingAddress> addrCf = billingAddressService.getBillingAddress(accountId)
+            .completeOnTimeout(BillingAddress.unknown(), timeoutMs, MILLISECONDS);
 
-        // CF: allOf(cf1, cf2, cf3) returns a CF<Void> that completes when ALL input CFs complete.
-        //     If any CF fails, allOf completes exceptionally immediately.
+        CompletableFuture<PaymentMethod> pmCf = paymentMethodService.getDefaultPaymentMethod(accountId)
+            .completeOnTimeout(PaymentMethod.unknown(), timeoutMs, MILLISECONDS);
+
+        // CF: allOf(cf1, cf2, cf3) — returns CF<Void> that completes when ALL input CFs complete.
+        //     Because we used completeOnTimeout, all three CFs always complete normally.
         //     allOf does NOT carry the results — access them via the original CF references.
         return CompletableFuture.allOf(subCf, addrCf, pmCf)
             .thenApply(ignored -> {
-                // CF: join() is SAFE here because allOf() guarantees that subCf, addrCf, pmCf
-                //     are ALL done before this thenApply callback runs.
-                //     join() on a completed CF returns immediately (no blocking, no waiting).
-                //     Never call join() before allOf() — that would block a thread.
-                // WHY join() and not get(): join() throws CompletionException (unchecked),
-                //     not ExecutionException (checked). Cleaner inside lambda bodies
-                //     where checked exceptions must be caught explicitly.
+                // CF: join() is SAFE here — allOf() guarantees all three are done before
+                //     this callback runs. join() on a completed CF returns immediately.
+                //     WHY join() not get(): join() throws CompletionException (unchecked),
+                //     cleaner inside lambdas where checked exceptions need explicit handling.
                 return new Invoice(subCf.join(), addrCf.join(), pmCf.join());
             });
-
-        // ALT: thenCombine for exactly 2 CFs:
-        //   subCf.thenCombine(addrCf, (sub, addr) -> new Object[]{sub, addr})
-        //        .thenCombine(pmCf, (pair, pm) -> new Invoice((Subscription)pair[0], (BillingAddress)pair[1], pm))
-        //   Works but: (a) ugly intermediate type, (b) doesn't parallelise well beyond 2.
-        //   allOf is the idiomatic choice for 3+ independent CFs.
     }
 }
