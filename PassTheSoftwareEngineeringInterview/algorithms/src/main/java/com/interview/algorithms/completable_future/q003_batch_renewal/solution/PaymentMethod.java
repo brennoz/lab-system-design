@@ -1,12 +1,7 @@
 package com.interview.algorithms.completable_future.q003_batch_renewal.solution;
 
-// NOTE: This PaymentMethod differs from q002's: field is 'token' not 'last4'.
-// WHY token: in batch renewal, the charge is made programmatically against a
-//     stored payment token (e.g. Stripe token, vault reference).
-//     The token allows charging without re-entering card details.
-//     It is never the raw card number — tokenisation is a PCI-DSS requirement.
-public record PaymentMethod(
-    String subscriptionId,  // which subscription this payment method serves
-    String type,            // e.g. "CARD", "SEPA_DIRECT_DEBIT"
-    String token            // opaque payment vault reference — never a real card number
-) {}
+// NOTE: q003 PaymentMethod has 'token' not 'last4' (different from q002).
+// WHY token: batch renewal charges programmatically against a stored vault token.
+//     The token is an opaque reference (e.g. Stripe token "pm_1ABC...").
+//     PCI-DSS: tokens are safe to store and transmit; raw card numbers are not.
+public record PaymentMethod(String subscriptionId, String type, String token) {}

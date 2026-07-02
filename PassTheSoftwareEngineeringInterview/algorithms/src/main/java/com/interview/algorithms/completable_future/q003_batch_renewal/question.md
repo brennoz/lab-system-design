@@ -1,66 +1,54 @@
 # Exercise 3 — Batch Subscription Renewal (Hard)
 
-**CF methods:** `thenCombine`, `thenCompose`, `thenApply`, `exceptionally`, `allOf`
-**Estimated time:** 35 min
-**Your file:** `MyAnswer.java` (this directory — start from scratch)
+**CF methods:** `thenCombine`, `thenCompose`, `thenApply`, `exceptionally`, `allOf`, `orTimeout`
+**New concepts:** Per-item failure isolation, `orTimeout` (hard failure on timeout)
+**Estimated time:** 40 min
+**Your file:** `MyAnswer.java` (this directory)
 **Reference:** `solution/Solution.java` (open only after attempting)
 
 ---
 
 ## Problem
 
-Implement batch renewal for a list of subscriptions.
-
-Implement this method in `MyAnswer.java`:
+Implement batch renewal for a list of subscriptions in `MyAnswer.java`:
 
 ```java
 public CompletableFuture<List<RenewalResult>> processRenewals(List<String> subscriptionIds)
 ```
 
-You need:
-- `PlanService.getPlan(subscriptionId)` → async
-- `PaymentMethodService.getPaymentMethod(subscriptionId)` → async
-- `ChargeService.charge(plan, paymentMethod)` → async, depends on plan + payment
+For **each** subscription:
+1. Fetch `SubscriptionPlan` and `PaymentMethod` **in parallel** — independent, no dependency between them
+2. Once both are ready, **charge** via `ChargeService` — depends on both results
+3. If charge succeeds → `RenewalResult.success(subscriptionId, chargeResult)`
+4. If charge fails OR times out → `RenewalResult.failed(subscriptionId, errorMessage)` — do NOT let it fail the batch
 
-For **each** subscriptionId:
-1. Fetch `SubscriptionPlan` and `PaymentMethod` **in parallel**
-2. Once both are ready, charge via `ChargeService`
-3. Wrap success as `RenewalResult.success(subscriptionId, chargeResult)`
-4. If charge fails, produce `RenewalResult.failed(subscriptionId, errorMessage)` — do NOT propagate the exception
+**Critical:** One failed charge must NOT fail the whole batch. The returned CF must complete normally with a full list even when individual charges fail.
 
-Return `CompletableFuture<List<RenewalResult>>` that completes when ALL renewals are done.
+## What to build from scratch
 
-## What to create (in this package, from scratch)
-
-- **`SubscriptionPlan`** — has subscriptionId, planName, amount (BigDecimal)
-- **`PaymentMethod`** — has subscriptionId, type, and a payment token
-- **`ChargeResult`** — has subscriptionId, chargeId, amount
-- **`RenewalResult`** — has subscriptionId, success flag, chargeResult (nullable), errorMessage (nullable)
-  - Add static factories: `success(id, chargeResult)` and `failed(id, errorMessage)`
-- **`PlanService`**, **`PaymentMethodService`**, **`ChargeService`** — async interfaces
-- **`MyAnswer`** — implements `processRenewals()`
-
-## Critical constraint
-
-**One failed charge must NOT fail the whole batch.**
-The returned CF must complete normally with a full list where failed items have `success == false`.
-
-This is the key difference from exercise 2 (one failure = whole invoice CF fails).
+- `SubscriptionPlan(subscriptionId, planName, BigDecimal amount)`
+- `PaymentMethod(subscriptionId, type, token)` — token is a payment vault reference
+- `ChargeResult(subscriptionId, chargeId, BigDecimal amount)`
+- `RenewalResult(subscriptionId, boolean success, ChargeResult, String errorMessage)` + static factories `success()` / `failed()`
+- `interface PlanService`, `PaymentMethodService`, `ChargeService` — async contracts
+- `*ServiceImpl` for each — `supplyAsync` + virtual thread executor + simulated delay
+- `MyAnswer` — constructor takes 3 interfaces + `long timeoutMs`; implements `processRenewals()`
 
 ## Key questions before coding
 
-1. For each subscription: plan and payment method are independent. Which CF method combines two independent CFs into one callback that receives both results?
-2. `chargeService.charge()` returns `CF<ChargeResult>`. If you use `thenApply` to call it, what type do you get? How does `thenCompose` fix this?
-3. `exceptionally` must be on which CF — the per-item one or the outer batch one? What goes wrong if you put it on the outer one?
-4. Why must you collect all per-item CFs into a List BEFORE calling `allOf`?
+1. Plan and payment method fetches for the SAME subscription are independent. Which CF method waits for exactly 2 parallel CFs and passes both results to a combine function?
+2. `chargeService.charge()` returns `CF<ChargeResult>`. If you use `thenApply`, what type do you get? Which CF method fixes this?
+3. Should `exceptionally` go on the per-item CF or on the outer `allOf`? What breaks if it goes on the outer one?
+4. `orTimeout` vs `completeOnTimeout` — a timed-out charge should be a hard failure (RenewalResult.failed), not a silent fallback. Which is correct?
+5. Why must you collect ALL per-item CFs into a List BEFORE calling `allOf`?
 
-## TDD workflow
+## TDD workflow — break into methods
 
-Break into two methods: `processRenewals()` (outer batch) and `renewOne()` (per-item pipeline). Test each concept separately:
+Implement as two methods: `processRenewals()` (outer batch) and `renewOne()` (per-item pipeline). Test each concept separately:
 - Test 1: all succeed
-- Test 2: one fails, others succeed, list still full (most important test)
-- Test 3: charge called with correct plan + payment
-- Test 4: result list size equals input size
+- Test 2: one charge fails, others succeed — batch still returns full list (most important)
+- Test 3: charge times out (mock returns never-completing CF + 10ms timeout) → `RenewalResult.failed`
+- Test 4: result size equals input size
 
 ## Run your tests
 
@@ -69,8 +57,3 @@ cd PassTheSoftwareEngineeringInterview
 JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 mvn test -pl algorithms \
   -Dtest="com.interview.algorithms.completable_future.q003_batch_renewal.MyAnswerTest"
 ```
-
-## Hints and reference
-
-- Type `hint` in chat for a nudge
-- Type `solution` to reveal the reference implementation

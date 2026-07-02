@@ -1,15 +1,14 @@
 package com.interview.algorithms.completable_future.q003_batch_renewal;
 
 /**
- * Exercise 3 — Batch Renewal
+ * Exercise 3 — Batch Subscription Renewal
  *
- * Read question.md before starting.
+ * Read question.md in this directory before starting.
  *
- * Design your own models, interfaces, and implement the solution from scratch.
- * Follow TDD: write MyAnswerTest.java first, then make it pass here.
+ * Create your own models, interfaces, Impl classes, and implement processRenewals from scratch.
+ * Follow TDD: write MyAnswerTest.java first, then implement here.
  *
- * Reference: solution/ sub-package contains a fully commented implementation
- * — only open it after you have attempted this exercise.
+ * Reference: solution/ sub-package — open only after attempting this exercise.
  */
 public class MyAnswer {
     // your implementation here

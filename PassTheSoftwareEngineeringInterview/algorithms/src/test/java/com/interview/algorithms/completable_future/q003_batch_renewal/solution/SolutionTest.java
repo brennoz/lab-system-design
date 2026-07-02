@@ -1,11 +1,5 @@
 package com.interview.algorithms.completable_future.q003_batch_renewal.solution;
 
-// REFERENCE TESTS — open only after writing your own MyAnswerTest.java
-//
-// Key test to understand: oneChargeFailureDoesNotFailEntireBatch.
-// This is the critical behaviour of exercise 3 — failure isolation per item.
-// Your test suite MUST include a test like this.
-
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -15,9 +9,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -31,89 +25,87 @@ class SolutionTest {
 
     @BeforeEach
     void setUp() {
-        underTest = new Solution(planService, paymentMethodService, chargeService);
+        // 10ms timeout — makes timeout test fast; no real waiting in CI
+        underTest = new Solution(planService, paymentMethodService, chargeService, 10L);
     }
 
     @Test
     void allSubscriptionsRenewedSuccessfully() throws Exception {
-        stubSuccessfulRenewal("sub-1", "charge-1");
-        stubSuccessfulRenewal("sub-2", "charge-2");
-        stubSuccessfulRenewal("sub-3", "charge-3");
+        stubSuccess("sub-1", "ch-1");
+        stubSuccess("sub-2", "ch-2");
+        stubSuccess("sub-3", "ch-3");
 
         List<RenewalResult> results = underTest.processRenewals(List.of("sub-1", "sub-2", "sub-3")).get();
 
         assertThat(results).hasSize(3);
-        // AssertJ: allMatch checks a predicate holds for every element in the list.
         assertThat(results).allMatch(RenewalResult::success);
-        // containsExactlyInAnyOrder: all three IDs present, order not guaranteed (allOf has no order guarantee).
         assertThat(results).extracting(RenewalResult::subscriptionId)
             .containsExactlyInAnyOrder("sub-1", "sub-2", "sub-3");
     }
 
     @Test
     void oneChargeFailureDoesNotFailEntireBatch() throws Exception {
-        // CRITICAL TEST: this is the core requirement of exercise 3.
-        // The returned CF must complete NORMALLY (not exceptionally) even when one charge fails.
-        // The failed item appears in the list with success==false.
-        stubSuccessfulRenewal("sub-1", "charge-1");
+        // CRITICAL TEST — core requirement of this exercise.
+        // The overall CF must complete NORMALLY even when one charge fails.
+        stubSuccess("sub-1", "ch-1");
 
-        // sub-2 charge returns a failed CF — simulates card decline
+        // sub-2 charge fails (card declined)
         stubPlanAndPayment("sub-2");
         when(chargeService.charge(
                 new SubscriptionPlan("sub-2", "MONTHLY", BigDecimal.valueOf(50)),
-                new PaymentMethod("sub-2", "CARD", "token-sub-2")))
+                new PaymentMethod("sub-2", "CARD", "tok-sub-2")))
             .thenReturn(CompletableFuture.failedFuture(new RuntimeException("Card declined for sub-2")));
 
-        stubSuccessfulRenewal("sub-3", "charge-3");
+        stubSuccess("sub-3", "ch-3");
 
-        // .get() — if the overall CF failed, this would throw ExecutionException.
-        // The fact that it doesn't throw proves the failure was isolated to sub-2.
+        // .get() — if overall CF failed this would throw; the fact it doesn't proves isolation
         List<RenewalResult> results = underTest.processRenewals(List.of("sub-1", "sub-2", "sub-3")).get();
 
-        assertThat(results).hasSize(3);  // batch size unchanged
-        assertThat(results).filteredOn(r -> r.subscriptionId().equals("sub-1")).allMatch(RenewalResult::success);
-        assertThat(results).filteredOn(r -> r.subscriptionId().equals("sub-2")).allMatch(r -> !r.success());
-        assertThat(results).filteredOn(r -> r.subscriptionId().equals("sub-2"))
-            .extracting(RenewalResult::errorMessage)
-            .containsExactly("Card declined for sub-2");
-        assertThat(results).filteredOn(r -> r.subscriptionId().equals("sub-3")).allMatch(RenewalResult::success);
+        assertThat(results).hasSize(3);
+        assertThat(results).filteredOn(r -> "sub-1".equals(r.subscriptionId())).allMatch(RenewalResult::success);
+        assertThat(results).filteredOn(r -> "sub-2".equals(r.subscriptionId())).allMatch(r -> !r.success());
+        assertThat(results).filteredOn(r -> "sub-2".equals(r.subscriptionId()))
+            .extracting(RenewalResult::errorMessage).containsExactly("Card declined for sub-2");
+        assertThat(results).filteredOn(r -> "sub-3".equals(r.subscriptionId())).allMatch(RenewalResult::success);
     }
 
     @Test
-    void planAndPaymentFetchedBeforeCharge() throws Exception {
-        // Verifies the per-item pipeline order: plan + payment THEN charge.
-        // Mockito's verify() confirms chargeService received the exact objects from stubs.
-        stubSuccessfulRenewal("sub-1", "charge-1");
+    void chargeTimeoutProducesFailedRenewalResult() throws Exception {
+        // Technique: stub charge to return a never-completing CF.
+        // After 10ms, orTimeout fires → TimeoutException → exceptionally catches it → RenewalResult.failed.
+        // extractMessage falls back to class name ("TimeoutException") when getCause().getMessage() == null.
+        stubPlanAndPayment("sub-1");
+        when(chargeService.charge(
+                new SubscriptionPlan("sub-1", "MONTHLY", BigDecimal.valueOf(50)),
+                new PaymentMethod("sub-1", "CARD", "tok-sub-1")))
+            .thenReturn(new CompletableFuture<>());  // never completes → timeout fires
 
-        underTest.processRenewals(List.of("sub-1")).get();
+        List<RenewalResult> results = underTest.processRenewals(List.of("sub-1"))
+            .get(2, TimeUnit.SECONDS);  // 2s well above 10ms timeout
 
-        verify(planService).getPlan("sub-1");
-        verify(paymentMethodService).getPaymentMethod("sub-1");
-        verify(chargeService).charge(
-            new SubscriptionPlan("sub-1", "MONTHLY", BigDecimal.valueOf(50)),
-            new PaymentMethod("sub-1", "CARD", "token-sub-1")
-        );
+        assertThat(results).hasSize(1);
+        assertThat(results.get(0).success()).isFalse();
+        // TimeoutException has no message → extractMessage returns class simple name
+        assertThat(results.get(0).errorMessage()).isEqualTo("TimeoutException");
     }
 
     @Test
     void resultSizeMatchesInputSize() throws Exception {
-        stubSuccessfulRenewal("sub-1", "charge-1");
-        stubSuccessfulRenewal("sub-2", "charge-2");
+        stubSuccess("sub-1", "ch-1");
+        stubSuccess("sub-2", "ch-2");
 
         List<RenewalResult> results = underTest.processRenewals(List.of("sub-1", "sub-2")).get();
 
         assertThat(results).hasSize(2);
     }
 
-    // ---- test helpers ----
+    // ---- helpers ----
 
-    // WHY extract to helper methods: avoids repeating 6 lines of stubbing per test.
-    //     DRY test helpers make tests read as intent (WHAT) not mechanics (HOW).
-    private void stubSuccessfulRenewal(String subscriptionId, String chargeId) {
+    private void stubSuccess(String subscriptionId, String chargeId) {
         stubPlanAndPayment(subscriptionId);
         when(chargeService.charge(
                 new SubscriptionPlan(subscriptionId, "MONTHLY", BigDecimal.valueOf(50)),
-                new PaymentMethod(subscriptionId, "CARD", "token-" + subscriptionId)))
+                new PaymentMethod(subscriptionId, "CARD", "tok-" + subscriptionId)))
             .thenReturn(CompletableFuture.completedFuture(
                 new ChargeResult(subscriptionId, chargeId, BigDecimal.valueOf(50))));
     }
@@ -124,6 +116,6 @@ class SolutionTest {
                 new SubscriptionPlan(subscriptionId, "MONTHLY", BigDecimal.valueOf(50))));
         when(paymentMethodService.getPaymentMethod(subscriptionId))
             .thenReturn(CompletableFuture.completedFuture(
-                new PaymentMethod(subscriptionId, "CARD", "token-" + subscriptionId)));
+                new PaymentMethod(subscriptionId, "CARD", "tok-" + subscriptionId)));
     }
 }
