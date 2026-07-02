@@ -11,7 +11,7 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -37,10 +37,10 @@ class SolutionTest {
 
         List<RenewalResult> results = underTest.processRenewals(List.of("sub-1", "sub-2", "sub-3")).get();
 
-        assertThat(results).hasSize(3);
-        assertThat(results).allMatch(RenewalResult::success);
-        assertThat(results).extracting(RenewalResult::subscriptionId)
-            .containsExactlyInAnyOrder("sub-1", "sub-2", "sub-3");
+        assertEquals(3, results.size());
+        assertTrue(results.stream().allMatch(RenewalResult::success));
+        var ids = results.stream().map(RenewalResult::subscriptionId).toList();
+        assertTrue(ids.containsAll(List.of("sub-1", "sub-2", "sub-3")));
     }
 
     @Test
@@ -61,12 +61,14 @@ class SolutionTest {
         // .get() — if overall CF failed this would throw; the fact it doesn't proves isolation
         List<RenewalResult> results = underTest.processRenewals(List.of("sub-1", "sub-2", "sub-3")).get();
 
-        assertThat(results).hasSize(3);
-        assertThat(results).filteredOn(r -> "sub-1".equals(r.subscriptionId())).allMatch(RenewalResult::success);
-        assertThat(results).filteredOn(r -> "sub-2".equals(r.subscriptionId())).allMatch(r -> !r.success());
-        assertThat(results).filteredOn(r -> "sub-2".equals(r.subscriptionId()))
-            .extracting(RenewalResult::errorMessage).containsExactly("Card declined for sub-2");
-        assertThat(results).filteredOn(r -> "sub-3".equals(r.subscriptionId())).allMatch(RenewalResult::success);
+        assertEquals(3, results.size());
+        var sub1 = results.stream().filter(r -> "sub-1".equals(r.subscriptionId())).findFirst().orElseThrow();
+        var sub2 = results.stream().filter(r -> "sub-2".equals(r.subscriptionId())).findFirst().orElseThrow();
+        var sub3 = results.stream().filter(r -> "sub-3".equals(r.subscriptionId())).findFirst().orElseThrow();
+        assertTrue(sub1.success());
+        assertFalse(sub2.success());
+        assertEquals("Card declined for sub-2", sub2.errorMessage());
+        assertTrue(sub3.success());
     }
 
     @Test
@@ -83,10 +85,10 @@ class SolutionTest {
         List<RenewalResult> results = underTest.processRenewals(List.of("sub-1"))
             .get(2, TimeUnit.SECONDS);  // 2s well above 10ms timeout
 
-        assertThat(results).hasSize(1);
-        assertThat(results.get(0).success()).isFalse();
+        assertEquals(1, results.size());
+        assertFalse(results.get(0).success());
         // TimeoutException has no message → extractMessage returns class simple name
-        assertThat(results.get(0).errorMessage()).isEqualTo("TimeoutException");
+        assertEquals("TimeoutException", results.get(0).errorMessage());
     }
 
     @Test
@@ -96,7 +98,7 @@ class SolutionTest {
 
         List<RenewalResult> results = underTest.processRenewals(List.of("sub-1", "sub-2")).get();
 
-        assertThat(results).hasSize(2);
+        assertEquals(2, results.size());
     }
 
     // ---- helpers ----
