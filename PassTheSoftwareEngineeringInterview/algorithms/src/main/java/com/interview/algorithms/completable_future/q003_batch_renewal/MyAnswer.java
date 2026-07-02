@@ -4,7 +4,7 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 // Exercise 3: allOf + thenCombine + thenCompose + exceptionally (Hard)
-// See concepts/completable_future/q003_batch_renewal/question.md for the full problem statement.
+// See algorithms/completable_future/q003_batch_renewal/question.md for the full problem statement.
 public class MyAnswer {
 
     private final PlanService planService;

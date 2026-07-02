@@ -3,7 +3,7 @@ package com.interview.algorithms.completable_future.q002_invoice_builder;
 import java.util.concurrent.CompletableFuture;
 
 // Exercise 2: thenCombine / allOf — parallel independent fetches
-// See concepts/completable_future/q002_invoice_builder/question.md for the full problem statement.
+// See algorithms/completable_future/q002_invoice_builder/question.md for the full problem statement.
 public class MyAnswer {
 
     private final SubscriptionService subscriptionService;

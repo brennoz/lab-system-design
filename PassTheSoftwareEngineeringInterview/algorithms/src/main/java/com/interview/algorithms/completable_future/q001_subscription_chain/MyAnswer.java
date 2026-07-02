@@ -3,7 +3,7 @@ package com.interview.algorithms.completable_future.q001_subscription_chain;
 import java.util.concurrent.CompletableFuture;
 
 // Exercise 1: thenApply + thenCompose
-// See concepts/completable_future/q001_subscription_chain/question.md for the full problem statement.
+// See algorithms/completable_future/q001_subscription_chain/question.md for the full problem statement.
 public class MyAnswer {
 
     private final SubscriptionService subscriptionService;
