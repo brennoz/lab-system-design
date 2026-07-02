@@ -1,4 +1,10 @@
-package com.interview.algorithms.completable_future.q003_batch_renewal;
+package com.interview.algorithms.completable_future.q003_batch_renewal.solution;
+
+// REFERENCE TESTS — open only after writing your own MyAnswerTest.java
+//
+// Key test to understand: oneChargeFailureDoesNotFailEntireBatch.
+// This is the critical behaviour of exercise 3 — failure isolation per item.
+// Your test suite MUST include a test like this.
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -11,20 +17,21 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
-class MyAnswerTest {
+class SolutionTest {
 
     @Mock PlanService planService;
     @Mock PaymentMethodService paymentMethodService;
     @Mock ChargeService chargeService;
 
-    MyAnswer underTest;
+    Solution underTest;
 
     @BeforeEach
     void setUp() {
-        underTest = new MyAnswer(planService, paymentMethodService, chargeService);
+        underTest = new Solution(planService, paymentMethodService, chargeService);
     }
 
     @Test
@@ -36,49 +43,60 @@ class MyAnswerTest {
         List<RenewalResult> results = underTest.processRenewals(List.of("sub-1", "sub-2", "sub-3")).get();
 
         assertThat(results).hasSize(3);
+        // AssertJ: allMatch checks a predicate holds for every element in the list.
         assertThat(results).allMatch(RenewalResult::success);
+        // containsExactlyInAnyOrder: all three IDs present, order not guaranteed (allOf has no order guarantee).
         assertThat(results).extracting(RenewalResult::subscriptionId)
             .containsExactlyInAnyOrder("sub-1", "sub-2", "sub-3");
     }
 
     @Test
     void oneChargeFailureDoesNotFailEntireBatch() throws Exception {
+        // CRITICAL TEST: this is the core requirement of exercise 3.
+        // The returned CF must complete NORMALLY (not exceptionally) even when one charge fails.
+        // The failed item appears in the list with success==false.
         stubSuccessfulRenewal("sub-1", "charge-1");
-        // sub-2 charge fails
+
+        // sub-2 charge returns a failed CF — simulates card decline
         stubPlanAndPayment("sub-2");
         when(chargeService.charge(
                 new SubscriptionPlan("sub-2", "MONTHLY", BigDecimal.valueOf(50)),
                 new PaymentMethod("sub-2", "CARD", "token-sub-2")))
             .thenReturn(CompletableFuture.failedFuture(new RuntimeException("Card declined for sub-2")));
+
         stubSuccessfulRenewal("sub-3", "charge-3");
 
+        // .get() — if the overall CF failed, this would throw ExecutionException.
+        // The fact that it doesn't throw proves the failure was isolated to sub-2.
         List<RenewalResult> results = underTest.processRenewals(List.of("sub-1", "sub-2", "sub-3")).get();
 
-        assertThat(results).hasSize(3); // batch always returns full list
+        assertThat(results).hasSize(3);  // batch size unchanged
         assertThat(results).filteredOn(r -> r.subscriptionId().equals("sub-1")).allMatch(RenewalResult::success);
         assertThat(results).filteredOn(r -> r.subscriptionId().equals("sub-2")).allMatch(r -> !r.success());
         assertThat(results).filteredOn(r -> r.subscriptionId().equals("sub-2"))
-            .extracting(RenewalResult::errorMessage).containsExactly("Card declined for sub-2");
+            .extracting(RenewalResult::errorMessage)
+            .containsExactly("Card declined for sub-2");
         assertThat(results).filteredOn(r -> r.subscriptionId().equals("sub-3")).allMatch(RenewalResult::success);
     }
 
     @Test
-    void planAndPaymentFetchedInParallelBeforeCharge() throws Exception {
+    void planAndPaymentFetchedBeforeCharge() throws Exception {
+        // Verifies the per-item pipeline order: plan + payment THEN charge.
+        // Mockito's verify() confirms chargeService received the exact objects from stubs.
         stubSuccessfulRenewal("sub-1", "charge-1");
 
         underTest.processRenewals(List.of("sub-1")).get();
 
-        // Both plan and payment method fetched for "sub-1"
         verify(planService).getPlan("sub-1");
         verify(paymentMethodService).getPaymentMethod("sub-1");
-        // Charge called with the fetched plan and payment method
         verify(chargeService).charge(
             new SubscriptionPlan("sub-1", "MONTHLY", BigDecimal.valueOf(50)),
-            new PaymentMethod("sub-1", "CARD", "token-sub-1"));
+            new PaymentMethod("sub-1", "CARD", "token-sub-1")
+        );
     }
 
     @Test
-    void resultListSizeMatchesInputListSize() throws Exception {
+    void resultSizeMatchesInputSize() throws Exception {
         stubSuccessfulRenewal("sub-1", "charge-1");
         stubSuccessfulRenewal("sub-2", "charge-2");
 
@@ -87,8 +105,10 @@ class MyAnswerTest {
         assertThat(results).hasSize(2);
     }
 
-    // ---- helpers ----
+    // ---- test helpers ----
 
+    // WHY extract to helper methods: avoids repeating 6 lines of stubbing per test.
+    //     DRY test helpers make tests read as intent (WHAT) not mechanics (HOW).
     private void stubSuccessfulRenewal(String subscriptionId, String chargeId) {
         stubPlanAndPayment(subscriptionId);
         when(chargeService.charge(
