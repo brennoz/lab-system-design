@@ -1,60 +1,54 @@
 # Exercise 1 — Subscription Chain (Easy)
 
 **CF methods:** `thenApply`, `thenCompose`
-**Estimated time:** 20 min
-**Your file:** `MyAnswer.java` (this directory — start from scratch)
+**New concepts:** `supplyAsync`, virtual thread executor (`Executors.newVirtualThreadPerTaskExecutor()`)
+**Estimated time:** 25 min
+**Your file:** `MyAnswer.java` (this directory)
 **Reference:** `solution/Solution.java` (open only after attempting)
 
 ---
 
 ## Problem
 
-Design and implement an enrichment pipeline for a subscription billing system.
-
-Implement a method with this signature in `MyAnswer.java`:
+Implement a subscription enrichment pipeline in `MyAnswer.java`:
 
 ```java
 public CompletableFuture<EnrichedSubscription> enrich(String subscriptionId)
 ```
 
-The pipeline must:
-1. Fetch a `Subscription` by id — async (network/DB call)
+Pipeline steps:
+1. Fetch `Subscription` by id — **async** (network call)
 2. Apply a pricing discount — **synchronous** transform (pure function, no IO)
-3. Fetch the `Account` using the `accountId` from the discounted subscription — async, depends on step 2
-4. Combine into an `EnrichedSubscription(discountedSubscription, account)`
+3. Fetch `Account` using the accountId from the discounted subscription — **async**, depends on step 2
+4. Combine into `EnrichedSubscription(discountedSubscription, account)`
 
-## What to create (in this package, from scratch)
+## What to build from scratch
 
-You decide the field names and types. Here is what the system needs:
+Design your own types — use these as a guide:
+- `Subscription` — id, accountId, planName, BigDecimal amount
+- `DiscountedSubscription` — same identity, different field name for discounted price
+- `Account` — id, name, email
+- `EnrichedSubscription` — wraps DiscountedSubscription + Account
+- `interface SubscriptionService` — `CompletableFuture<Subscription> findById(String id)`
+- `SubscriptionServiceImpl implements SubscriptionService` — use `supplyAsync` + `Executors.newVirtualThreadPerTaskExecutor()`
+- `interface PricingService` — **synchronous**: `DiscountedSubscription applyDiscount(Subscription s)`
+- `PricingServiceImpl implements PricingService` — pure calculation, no executor needed
+- `interface AccountService` — `CompletableFuture<Account> findById(String accountId)`
+- `AccountServiceImpl implements AccountService` — use `supplyAsync`
+- `MyAnswer` — constructor takes all 3 interfaces; implements `enrich()`
 
-- **`Subscription`** — has at minimum: an `id`, an `accountId`, a plan name, and an amount
-- **`DiscountedSubscription`** — same identity as Subscription but with a discounted amount field
-- **`Account`** — has at minimum: an `id`, a name, an email
-- **`EnrichedSubscription`** — combines DiscountedSubscription + Account
-- **`SubscriptionService`** — async interface: `CompletableFuture<Subscription> findById(String id)`
-- **`PricingService`** — **synchronous** interface: `DiscountedSubscription applyDiscount(Subscription s)`
-- **`AccountService`** — async interface: `CompletableFuture<Account> findById(String accountId)`
-- **`MyAnswer`** — constructor takes all three services; implements `enrich()`
+## Key questions before coding
 
-## Constraints
-
-- Do **not** call `.get()` or `.join()` inside `enrich()` — chain CFs
-- Chain from `subscriptionService.findById(subscriptionId)` using CF methods only
-
-## Key question before coding
-
-`PricingService.applyDiscount()` is synchronous. `AccountService.findById()` is asynchronous.
-- Which CF method handles a synchronous transform?
-- Which CF method handles an async step that depends on the previous result?
-- What type would you get if you used the wrong method for the async step?
+- `PricingService.applyDiscount()` is synchronous. `AccountService.findById()` is async.
+  Which CF method handles each? What type would you get if you used the wrong one for the async step?
+- The account fetch needs `discounted.accountId()` — it can't start until the subscription is fetched.
+  Is this fetch parallel or sequential? Which CF method expresses that?
 
 ## TDD workflow
 
-1. Write `MyAnswerTest.java` in `src/test/java/...q001_subscription_chain/`
-2. Use `@Mock` for all three services; stub with `CompletableFuture.completedFuture(...)`
-3. Run tests — confirm they fail (Red)
-4. Implement `MyAnswer.enrich()` — make them pass (Green)
-5. Refactor
+1. Write `MyAnswerTest.java` in `src/test/java/.../q001_subscription_chain/`
+2. Mock the 3 interfaces with `@Mock`; stub with `CompletableFuture.completedFuture(...)`
+3. Red → fail. Implement `enrich()`. Green → pass. Refactor.
 
 ## Run your tests
 
@@ -63,9 +57,3 @@ cd PassTheSoftwareEngineeringInterview
 JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 mvn test -pl algorithms \
   -Dtest="com.interview.algorithms.completable_future.q001_subscription_chain.MyAnswerTest"
 ```
-
-## Hints and reference
-
-- Type `hint` in chat for a nudge
-- Type `solution` to reveal the reference implementation
-- Or open `solution/Solution.java` directly (but try first!)

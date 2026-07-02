@@ -2,12 +2,10 @@ package com.interview.algorithms.completable_future.q001_subscription_chain.solu
 
 import java.util.concurrent.CompletableFuture;
 
-// CF: AccountService is ASYNCHRONOUS — returns CompletableFuture<Account>.
-//     This is what requires thenCompose in the pipeline (not thenApply).
-// WHY: fetching account data requires an external call (another microservice or DB).
-//      The account fetch DEPENDS ON the subscriptionId's accountId — it cannot
-//      start until the subscription is known. This sequential dependency is expressed
-//      with thenCompose: "when the subscription arrives, start an async account fetch".
+// CF: async — account data lives in a separate microservice (remote HTTP/DB call).
+// WHY account fetch is SEQUENTIAL (not parallel): we need discounted.accountId() to know
+//     WHICH account to fetch. That value is only known after subscription fetch + discount.
+//     When a step DEPENDS on the previous result → thenCompose (not thenCombine/allOf).
 public interface AccountService {
     CompletableFuture<Account> findById(String accountId);
 }
