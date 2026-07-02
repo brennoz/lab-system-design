@@ -11,7 +11,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -45,10 +45,10 @@ class SolutionTest {
 
         Invoice invoice = underTest.buildInvoice("sub-1", "acc-1").get();
 
-        assertThat(invoice.subscription()).isEqualTo(sub);
-        assertThat(invoice.billingAddress()).isEqualTo(addr);
-        assertThat(invoice.paymentMethod()).isEqualTo(pm);
-        assertThat(invoice.amount()).isEqualByComparingTo(BigDecimal.valueOf(1200));
+        assertEquals(sub, invoice.subscription());
+        assertEquals(addr, invoice.billingAddress());
+        assertEquals(pm, invoice.paymentMethod());
+        assertEquals(0, invoice.amount().compareTo(BigDecimal.valueOf(1200)));
     }
 
     @Test
@@ -86,9 +86,9 @@ class SolutionTest {
         Invoice invoice = underTest.buildInvoice("sub-1", "acc-1").get(2, TimeUnit.SECONDS);
 
         // Invoice built normally — completeOnTimeout filled in the fallback
-        assertThat(invoice.billingAddress()).isEqualTo(BillingAddress.unknown());
-        assertThat(invoice.subscription()).isEqualTo(sub);    // other services unaffected
-        assertThat(invoice.paymentMethod()).isEqualTo(pm);
+        assertEquals(BillingAddress.unknown(), invoice.billingAddress());
+        assertEquals(sub, invoice.subscription());    // other services unaffected
+        assertEquals(pm, invoice.paymentMethod());
     }
 
     @Test
@@ -113,14 +113,34 @@ class SolutionTest {
         CompletableFuture<Invoice> result = underTest.buildInvoice("sub-1", "acc-1");
 
         // If implementation is parallel: all 3 fired before any CF resolved → callCount == 3
-        assertThat(callCount.get())
-            .as("All 3 services must fire before any CF resolves")
-            .isEqualTo(3);
+        assertEquals(3, callCount.get(), "All 3 services must fire before any CF resolves");
 
         // Now resolve CFs to allow the invoice to complete
         subCf.complete(new Subscription("sub-1", "ANNUAL", BigDecimal.valueOf(1200)));
         addrCf.complete(new BillingAddress("acc-1", "1 Billing St", "London", "EC1A 1BB"));
         pmCf.complete(new PaymentMethod("acc-1", "CARD", "4242"));
-        assertThat(result.get(2, TimeUnit.SECONDS)).isNotNull();
+        assertNotNull(result.get(2, TimeUnit.SECONDS));
+    }
+
+    @Test
+    void failingServiceTriggersExceptionallyFallback() throws Exception {
+        // completeOnTimeout handles slow services; exceptionally handles broken services.
+        // Stub getBillingAddress to return failedFuture — simulates a network error, not a timeout.
+        // CF: failedFuture completes immediately with an exception — no pending CF, so
+        //     completeOnTimeout never fires. exceptionally IS the handler here.
+        var sub = new Subscription("sub-1", "ANNUAL", BigDecimal.valueOf(1200));
+        var pm  = new PaymentMethod("acc-1", "CARD", "4242");
+
+        when(subscriptionService.getSubscription("sub-1")).thenReturn(CompletableFuture.completedFuture(sub));
+        when(billingAddressService.getBillingAddress("acc-1"))
+            .thenReturn(CompletableFuture.failedFuture(new RuntimeException("Address service unavailable")));
+        when(paymentMethodService.getDefaultPaymentMethod("acc-1")).thenReturn(CompletableFuture.completedFuture(pm));
+
+        Invoice invoice = underTest.buildInvoice("sub-1", "acc-1").get(2, TimeUnit.SECONDS);
+
+        // exceptionally caught the broken service — fallback used, invoice built normally
+        assertEquals(BillingAddress.unknown(), invoice.billingAddress());
+        assertEquals(sub, invoice.subscription());
+        assertEquals(pm, invoice.paymentMethod());
     }
 }

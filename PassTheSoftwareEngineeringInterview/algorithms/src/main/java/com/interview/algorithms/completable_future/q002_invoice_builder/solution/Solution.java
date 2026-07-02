@@ -29,20 +29,25 @@ public class Solution {
         //     Sequential: sub(200ms) → addr(180ms) → pm(150ms) = 530ms total
         //     Parallel:   all three simultaneously             ≈ 200ms total (slowest wins)
         // These three calls are INDEPENDENT — no result depends on another's value.
+        // WHY both completeOnTimeout AND exceptionally:
+        //     completeOnTimeout handles SLOW services (CF still pending after timeoutMs)
+        //     exceptionally    handles BROKEN services (CF completed with an exception)
+        //     Together: allOf() always completes normally regardless of how each service fails.
         CompletableFuture<Subscription> subCf = subscriptionService.getSubscription(subscriptionId)
-            // CF: completeOnTimeout — if the CF does not complete within timeoutMs,
-            //     it is completed NORMALLY with the fallback value (Subscription.empty()).
-            //     The CF never completes exceptionally due to timeout; allOf() always succeeds.
-            // WHY completeOnTimeout (not orTimeout): orTimeout throws TimeoutException,
-            //     which would fail the whole invoice build. completeOnTimeout lets the invoice
-            //     be built with degraded data — better for user experience.
-            .completeOnTimeout(Subscription.empty(), timeoutMs, MILLISECONDS);
+            // CF: completeOnTimeout — fires when CF is still PENDING after timeoutMs.
+            //     Does NOT catch exceptions already thrown — that's exceptionally's job.
+            .completeOnTimeout(Subscription.empty(), timeoutMs, MILLISECONDS)
+            // CF: exceptionally — fires when CF completed EXCEPTIONALLY (network error, NPE, etc.).
+            //     Does NOT fire after completeOnTimeout (which completes the CF normally).
+            .exceptionally(ex -> Subscription.empty());
 
         CompletableFuture<BillingAddress> addrCf = billingAddressService.getBillingAddress(accountId)
-            .completeOnTimeout(BillingAddress.unknown(), timeoutMs, MILLISECONDS);
+            .completeOnTimeout(BillingAddress.unknown(), timeoutMs, MILLISECONDS)
+            .exceptionally(ex -> BillingAddress.unknown());
 
         CompletableFuture<PaymentMethod> pmCf = paymentMethodService.getDefaultPaymentMethod(accountId)
-            .completeOnTimeout(PaymentMethod.unknown(), timeoutMs, MILLISECONDS);
+            .completeOnTimeout(PaymentMethod.unknown(), timeoutMs, MILLISECONDS)
+            .exceptionally(ex -> PaymentMethod.unknown());
 
         // CF: allOf(cf1, cf2, cf3) — returns CF<Void> that completes when ALL input CFs complete.
         //     Because we used completeOnTimeout, all three CFs always complete normally.
