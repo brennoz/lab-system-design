@@ -10,8 +10,7 @@ import java.math.BigDecimal;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -47,8 +46,8 @@ class SolutionTest {
 
         EnrichedSubscription result = underTest.enrich("sub-1").get();
 
-        assertThat(result.subscription()).isEqualTo(discounted);
-        assertThat(result.account()).isEqualTo(account);
+        assertEquals(discounted, result.subscription());
+        assertEquals(account, result.account());
     }
 
     @Test
@@ -80,9 +79,8 @@ class SolutionTest {
 
         EnrichedSubscription result = underTest.enrich("sub-1").get();
 
-        // AssertJ: isEqualByComparingTo for BigDecimal — avoids scale differences.
-        assertThat(result.subscription().discountedAmount())
-            .isEqualByComparingTo(BigDecimal.valueOf(1080));
+        // isEqualByComparingTo equivalent: compareTo returns 0 when values are equal regardless of scale
+        assertEquals(0, result.subscription().discountedAmount().compareTo(BigDecimal.valueOf(1080)));
     }
 
     @Test
@@ -95,9 +93,9 @@ class SolutionTest {
                 new RuntimeException("Subscription not found: sub-999")));
 
         // .get() re-throws wrapped in ExecutionException — CF's cross-thread exception carrier.
-        assertThatThrownBy(() -> underTest.enrich("sub-999").get())
-            .isInstanceOf(ExecutionException.class)
-            .hasCauseInstanceOf(RuntimeException.class)
-            .hasMessageContaining("Subscription not found");
+        ExecutionException ex = assertThrows(ExecutionException.class,
+            () -> underTest.enrich("sub-999").get());
+        assertInstanceOf(RuntimeException.class, ex.getCause());
+        assertTrue(ex.getCause().getMessage().contains("Subscription not found"));
     }
 }
