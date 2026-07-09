@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Containers — Multi-Stage Dockerfile for Spring Boot</title>
+<style>
+  :root {
+    --ink: #1a1a1a; --muted: #555; --border: #d0d0d0;
+    --accent: #1a56db; --bg-soft: #f8f8f6; --bg-note: #eff6ff;
+    --bg-warn: #fffbeb;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 17px; line-height: 1.75; color: var(--ink);
+    max-width: 860px; margin: 0 auto; padding: 3rem 2rem 6rem;
+  }
+  h1 { font-size: 2rem; line-height: 1.2; margin-bottom: 0.4rem; }
+  h2 { font-size: 1.25rem; margin: 2.5rem 0 0.8rem; padding-left: 0.8rem; border-left: 4px solid var(--accent); }
+  h3 { font-size: 1rem; margin: 1.4rem 0 0.4rem; font-weight: bold; }
+  p  { margin: 0.7rem 0; }
+  ul, ol { padding-left: 1.6rem; margin: 0.6rem 0; }
+  li { margin: 0.3rem 0; }
+  code {
+    font-family: 'Menlo', 'Consolas', monospace; font-size: 0.83em;
+    background: #f0f0f0; padding: 0.1em 0.35em; border-radius: 3px;
+  }
+  pre {
+    font-family: 'Menlo', 'Consolas', monospace; font-size: 0.8em;
+    background: #1e1e2e; color: #cdd6f4;
+    padding: 1rem 1.2rem; border-radius: 6px; overflow-x: auto;
+    margin: 0.8rem 0; line-height: 1.6;
+  }
+  pre .c  { color: #6c7086; font-style: italic; }
+  pre .kw { color: #cba6f7; }
+  pre .ty { color: #89b4fa; }
+  pre .st { color: #a6e3a1; }
+  pre .co { color: #fab387; }
+  pre .an { color: #f38ba8; }
+  pre .nu { color: #f9e2af; }
+  table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.88rem; }
+  th { background: var(--bg-soft); text-align: left; padding: 0.5rem 0.8rem; border: 1px solid var(--border); }
+  td { padding: 0.45rem 0.8rem; border: 1px solid var(--border); vertical-align: top; }
+  tr:nth-child(even) td { background: var(--bg-soft); }
+  .meta { color: var(--muted); font-size: 0.88rem; margin-bottom: 2rem; }
+  .callout { background: var(--bg-note); border-left: 4px solid var(--accent); padding: 0.9rem 1.1rem; margin: 1.2rem 0; border-radius: 0 4px 4px 0; }
+  .callout-warn { background: var(--bg-warn); border-left-color: #d97706; }
+  .callout-green { background: #f0fdf4; border-left-color: #16a34a; }
+  .callout-red { background: #fef2f2; border-left-color: #dc2626; }
+  hr { border: none; border-top: 1px solid var(--border); margin: 2.5rem 0; }
+
+  /* ── Pipeline / architecture diagrams ── */
+  .arch-box {
+    border: 1px solid var(--border); border-radius: 6px;
+    background: var(--bg-soft); padding: 1rem 1.2rem;
+    margin: 1rem 0; font-family: 'Menlo', 'Consolas', monospace; font-size: 0.82rem;
+    line-height: 1.9; color: var(--ink);
+    white-space: pre; overflow-x: auto;
+  }
+
+  /* ── Comparison grid ── */
+  .compare-grid {
+    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; margin: 1rem 0;
+  }
+  .compare-grid-2 {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1rem 0;
+  }
+  .compare-card {
+    border: 2px solid var(--border); border-radius: 6px; overflow: hidden;
+  }
+  .compare-card.bad   { border-color: #fca5a5; }
+  .compare-card.ok    { border-color: #93c5fd; }
+  .compare-card.good  { border-color: #86efac; }
+  .compare-header {
+    padding: 0.45rem 0.8rem; font-weight: bold; font-size: 0.85rem;
+    font-family: Georgia, serif;
+  }
+  .bad  .compare-header { background: #fee2e2; color: #991b1b; }
+  .ok   .compare-header { background: #dbeafe; color: #1e40af; }
+  .good .compare-header { background: #dcfce7; color: #166534; }
+  .compare-body { padding: 0.6rem 0.8rem; background: #fff; font-size: 0.85rem; }
+
+  /* ── Quiz ── */
+  .quiz-section h2 { border-color: #d97706; }
+  .question { border: 1px solid var(--border); border-radius: 6px; padding: 1rem 1.2rem; margin: 1.2rem 0; }
+  .question p { font-weight: bold; margin-bottom: 0.6rem; }
+  .options { list-style: none; padding: 0; }
+  .options li { padding: 0.45rem 0.7rem; margin: 0.3rem 0; border: 1px solid var(--border); border-radius: 4px; cursor: pointer; }
+  .options li:hover { background: #f0f4ff; }
+  .options li.correct { background: #dcfce7; border-color: #16a34a; color: #166534; font-weight: bold; }
+  .options li.wrong   { background: #fee2e2; border-color: #dc2626; color: #991b1b; }
+  .explanation { display: none; margin-top: 0.8rem; padding: 0.7rem 0.9rem; background: var(--bg-soft); border-radius: 4px; font-size: 0.92rem; }
+
+  /* ── Table of contents ── */
+  .toc { background: var(--bg-soft); border-radius: 6px; padding: 1rem 1.4rem; margin: 1.5rem 0; }
+  .toc h4 { margin-bottom: 0.5rem; font-size: 0.95rem; }
+  .toc ol { margin: 0; padding-left: 1.3rem; }
+  .toc li { margin: 0.2rem 0; font-size: 0.9rem; }
+  .toc a { color: var(--accent); text-decoration: none; }
+
+  /* ── AI section ── */
+  .ai-section h2 { border-color: #7c3aed; }
+  .ai-callout { background: #f5f3ff; border-left: 4px solid #7c3aed; padding: 0.9rem 1.1rem; margin: 1.2rem 0; border-radius: 0 4px 4px 0; }
+
+  .footer { margin-top: 4rem; padding-top: 1.5rem; border-top: 1px solid var(--border); color: var(--muted); font-size: 0.88rem; }
+  a { color: var(--accent); }
+  .badge { display: inline-block; font-size: 0.76rem; padding: 0.1em 0.5em; border-radius: 3px; font-weight: bold; }
+  .badge-blue  { background: #dbeafe; color: #1e40af; }
+  .badge-green { background: #dcfce7; color: #166534; }
+  .badge-purple { background: #ede9fe; color: #5b21b6; }
+  .here-marker { display: inline-block; background: #fef08a; color: #713f12; font-weight: bold; font-size: 0.78rem; padding: 0.1em 0.5em; border-radius: 3px; font-family: 'Menlo', monospace; }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ink: #e0e0e0; --muted: #aaa; --border: #444;
+      --accent: #5fa3ff; --bg-soft: #2a2a2a; --bg-note: #1a2a4a;
+      --bg-warn: #4a3a1a;
+    }
+    body { background: #1a1a1a; }
+    pre { background: #111 !important; }
+    .options li:hover { background: #2a3a5a; }
+    .options li.correct { background: #1a4a2a; border-color: #4a9a5a; color: #cfffdf; }
+    .options li.wrong { background: #4a1a1a; border-color: #aa3a3a; color: #ffd0d0; }
+    .callout-red { background: #3a1a1a; }
+    .comparison-grid > div { background: #252525; }
+    table th { background: #2a2a2a; }
+    table tr:nth-child(even) { background: #222; }
+    .here-marker { background: #5a4000; color: #ffe680; }
+  }
+  :root[data-theme="dark"] {
+    --ink: #e0e0e0; --muted: #aaa; --border: #444;
+    --accent: #5fa3ff; --bg-soft: #2a2a2a; --bg-note: #1a2a4a;
+    --bg-warn: #4a3a1a;
+  }
+  :root[data-theme="light"] {
+    --ink: #1a1a1a; --muted: #555; --border: #d0d0d0;
+    --accent: #1a56db; --bg-soft: #f8f8f6; --bg-note: #eff6ff;
+    --bg-warn: #fffbeb;
+  }
+</style>
+</head>
+<body>
+
+<h1>Containers — Multi-Stage Dockerfile for Spring Boot</h1>
+<p class="meta">
+  Cluster: <span class="badge badge-blue">containers</span>
+  &nbsp;·&nbsp;
+  Tools: <span class="badge badge-green">Docker</span>
+  <span class="badge badge-blue">ECR</span>
+  &nbsp;·&nbsp;
+  Level: Medium &nbsp;·&nbsp; Read time: ~20 min
+</p>
+
+<div class="toc">
+  <h4>Contents</h4>
+  <ol>
+    <li><a href="#pipeline">Where containers fit in the pipeline</a></li>
+    <li><a href="#why-multistage">Why multi-stage — size and attack surface</a></li>
+    <li><a href="#dockerfile">Annotated Dockerfile</a></li>
+    <li><a href="#dockerignore">.dockerignore — what to exclude and why</a></li>
+    <li><a href="#breaks">What breaks without this</a></li>
+    <li><a href="#aws">AWS mapping</a></li>
+    <li><a href="#quiz">Quiz</a></li>
+    <li><a href="#ai">AI Engineering Extension</a></li>
+  </ol>
+</div>
+
+<p>A Dockerfile is not just a build script — it is a security boundary, a caching contract, and a deployment artifact all in one. Getting it wrong costs you 500 MB of Maven re-downloads on every commit, containers running as root, and Kubernetes pods that ignore shutdown signals. This lesson covers the canonical multi-stage Dockerfile for a Spring Boot service and explains every decision.</p>
+
+<hr>
+
+<h2 id="pipeline">Where containers fit in the pipeline</h2>
+
+<p>Every push to GitLab triggers a chain. The multi-stage <code>docker build</code> is the step that converts compiled Java into a runnable, versioned artifact — the unit that Kubernetes actually deploys.</p>
+
+<div class="arch-box">git push
+  │
+  └─▶ GitLab CI
+        │
+        ├─ mvn test                 ← unit tests fail fast, before image build
+        │
+        ├─ docker build (multi-stage)   ◀── <span class="here-marker">YOU ARE HERE</span>
+        │    Stage 1 → eclipse-temurin:21-jdk-alpine  (build)
+        │    Stage 2 → eclipse-temurin:21-jre-alpine  (runtime)
+        │
+        └─ docker push ──────────────▶ ECR
+                                         │ image:sha256-abc123
+                              Helm chart updated (image tag)
+                                         │
+                                   ArgoCD detects drift
+                                         │
+                                   EKS rolling update
+                                    (old pods → new pods)
+                                         │
+                              Datadog traces + logs stream
+                              (APM agent auto-injected via K8s)
+
+  Underneath everything:
+  Terraform provisioned ECR repository + EKS cluster + IAM roles</div>
+
+<p>The image tag that flows from <code>docker push</code> through to <code>ArgoCD</code> must be a content-addressed identifier — a Git SHA or digest, never <code>latest</code>. We will see why in the "What breaks" section.</p>
+
+<hr>
+
+<h2 id="why-multistage">Why multi-stage — size and attack surface</h2>
+
+<p>A single-stage build that compiles and runs from the same image ships the entire JDK, Maven, and your source tree into production. Multi-stage builds let you throw all of that away — only the JAR crosses the boundary into the runtime image.</p>
+
+<div class="compare-grid">
+  <div class="compare-card bad">
+    <div class="compare-header">Single-stage JDK</div>
+    <div class="compare-body">
+      <strong>Base:</strong> eclipse-temurin:21-jdk<br>
+      <strong>Final size:</strong> ~600 MB<br><br>
+      <strong>What's inside:</strong><br>
+      <ul style="margin-top:0.4rem">
+        <li>Full JDK (javac, jshell, jmap)</li>
+        <li>Maven binary + local repo (~200 MB)</li>
+        <li>Source code</li>
+        <li>Alpine build tools (wget, curl)</li>
+      </ul>
+      <br>
+      <strong>Attack surface:</strong> Compiler present — attacker can compile payloads inside the container. Maven credentials potentially on disk.
+    </div>
+  </div>
+  <div class="compare-card ok">
+    <div class="compare-header">Multi-stage JDK → JRE</div>
+    <div class="compare-body">
+      <strong>Build:</strong> eclipse-temurin:21-jdk-alpine<br>
+      <strong>Runtime:</strong> eclipse-temurin:21-jre-alpine<br>
+      <strong>Final size:</strong> ~200 MB<br><br>
+      <strong>What's inside (runtime only):</strong><br>
+      <ul style="margin-top:0.4rem">
+        <li>JRE (java binary only — no javac)</li>
+        <li>Your JAR</li>
+        <li>Alpine minimal userland (sh, wget)</li>
+      </ul>
+      <br>
+      <strong>Attack surface:</strong> No compiler, no Maven, no src. Shell still present — an attacker can spawn a shell if they break out of the JVM.
+    </div>
+  </div>
+  <div class="compare-card good">
+    <div class="compare-header">Multi-stage → Distroless</div>
+    <div class="compare-body">
+      <strong>Build:</strong> eclipse-temurin:21-jdk-alpine<br>
+      <strong>Runtime:</strong> gcr.io/distroless/java21<br>
+      <strong>Final size:</strong> ~120 MB<br><br>
+      <strong>What's inside (runtime only):</strong><br>
+      <ul style="margin-top:0.4rem">
+        <li>JRE (from Google's curated image)</li>
+        <li>Your JAR</li>
+        <li>No shell, no package manager, no libc extras</li>
+      </ul>
+      <br>
+      <strong>Attack surface:</strong> Minimum possible. No shell to spawn, no package manager to install tools. Harder to debug — no <code>exec</code> into a shell.
+    </div>
+  </div>
+</div>
+
+<div class="callout">
+  <strong>Interview framing:</strong> In regulated environments (PCI-DSS, banking, betting), distroless is increasingly expected for production workloads. The tradeoff is debuggability — you cannot <code>kubectl exec -it pod -- /bin/sh</code>. The mitigation is ephemeral debug containers (<code>kubectl debug</code>) and shipping all diagnostics to Datadog/Splunk rather than doing ad-hoc shell work in prod.
+</div>
+
+<hr>
+
+<h2 id="dockerfile">Annotated Dockerfile</h2>
+
+<p>This is the canonical multi-stage Dockerfile for a Spring Boot service. Every line has a reason.</p>
+
+<pre>
+<span class="c"># ── Stage 1: Build ───────────────────────────────────────────────────────────</span>
+<span class="c"># Alpine variant: same JDK but stripped Alpine Linux base (~100MB smaller than Debian).</span>
+<span class="c"># AS build: names this stage so Stage 2 can reference it with --from=build.</span>
+<span class="kw">FROM</span> <span class="st">eclipse-temurin:21-jdk-alpine</span> <span class="kw">AS</span> <span class="st">build</span>
+
+<span class="kw">WORKDIR</span> <span class="st">/workspace</span>
+
+<span class="c"># ── Layer caching trick: copy the dependency manifest FIRST ───────────────────</span>
+<span class="c"># Docker builds images as a stack of layers. A layer is only rebuilt when its</span>
+<span class="c"># inputs change. If pom.xml hasn't changed, the RUN below is a cache hit</span>
+<span class="c"># even when src/ changes. Without this ordering, a one-line src change would</span>
+<span class="c"># re-trigger mvn dependency:go-offline and re-download 200MB+ of JARs.</span>
+<span class="kw">COPY</span> <span class="st">pom.xml .</span>
+
+<span class="c"># Download all dependencies to the local Maven cache inside this layer.</span>
+<span class="c"># -B = batch mode (no progress bars in CI logs). This RUN is cached as long as</span>
+<span class="c"># pom.xml is unchanged — typical on 95% of commits (src changes only).</span>
+<span class="kw">RUN</span> <span class="st">mvn dependency:go-offline -B</span>
+
+<span class="c"># Copy source AFTER the dep-download layer. This way a change to src/</span>
+<span class="c"># only invalidates this COPY and the RUN below — NOT the dep download layer.</span>
+<span class="kw">COPY</span> <span class="st">src ./src</span>
+
+<span class="c"># Package the application. -DskipTests because unit tests run earlier in CI,</span>
+<span class="c"># not inside Docker. Running tests here would make the image non-deterministic</span>
+<span class="c"># (tests could pass or fail depending on env) and slow the build unnecessarily.</span>
+<span class="kw">RUN</span> <span class="st">mvn package -DskipTests -B</span>
+
+<span class="c"># ── Stage 2: Runtime ─────────────────────────────────────────────────────────</span>
+<span class="c"># Switch to JRE (not JDK). No compiler, no jshell, no jmap in production.</span>
+<span class="c"># Everything from Stage 1 (Maven cache, src, JDK tools) is left behind —</span>
+<span class="c"># it is NOT present in this final image. That is the whole point of multi-stage.</span>
+<span class="kw">FROM</span> <span class="st">eclipse-temurin:21-jre-alpine</span>
+
+<span class="c"># ── Non-root user ─────────────────────────────────────────────────────────────</span>
+<span class="c"># By default, containers run as root (UID 0). If an attacker exploits a</span>
+<span class="c"># vulnerability in the JVM or your app, they get root inside the container.</span>
+<span class="c"># In some misconfigured K8s clusters, container root = host root (no seccomp).</span>
+<span class="c"># Alpine uses addgroup/adduser (BusyBox), not useradd/groupadd (glibc/shadow).</span>
+<span class="c"># -S = system account (no login shell, no home dir by default).</span>
+<span class="kw">RUN</span> <span class="st">addgroup -S appgroup &amp;&amp; adduser -S appuser -G appgroup</span>
+
+<span class="kw">WORKDIR</span> <span class="st">/app</span>
+
+<span class="c"># ── Crossing the stage boundary ───────────────────────────────────────────────</span>
+<span class="c"># --from=build pulls files from Stage 1 into Stage 2. The glob *.jar matches</span>
+<span class="c"># the fat JAR produced by spring-boot-maven-plugin (e.g. myservice-1.0.0.jar).</span>
+<span class="c"># Only this JAR crosses — nothing else from /workspace is carried over.</span>
+<span class="kw">COPY</span> <span class="st">--from=build /workspace/target/*.jar app.jar</span>
+
+<span class="c"># EXPOSE is documentation, not a firewall rule. K8s NetworkPolicy and</span>
+<span class="c"># SecurityGroups control actual traffic. But it IS used by docker run -P</span>
+<span class="c"># to auto-assign host ports, and by K8s tooling that reads containerPort.</span>
+<span class="kw">EXPOSE</span> <span class="nu">8080</span>
+
+<span class="c"># Switch to non-root AFTER COPY (COPY as root is fine — file ownership can</span>
+<span class="c"># be set; USER only affects subsequent RUN/CMD/ENTRYPOINT).</span>
+<span class="kw">USER</span> <span class="st">appuser</span>
+
+<span class="c"># ── Exec form vs shell form ───────────────────────────────────────────────────</span>
+<span class="c"># Shell form:  CMD java -jar app.jar          → /bin/sh -c "java -jar app.jar"</span>
+<span class="c"># Exec form:   CMD ["java", "-jar", "app.jar"] → java is PID 1 directly</span>
+<span class="c">#</span>
+<span class="c"># K8s sends SIGTERM to PID 1 when a pod is terminated (rolling update, scale-down).</span>
+<span class="c"># Shell form: sh receives SIGTERM. sh does NOT forward it to java.</span>
+<span class="c"># Result: java keeps running for 30s until K8s sends SIGKILL → abrupt shutdown,</span>
+<span class="c"># in-flight HTTP requests dropped, connection pool not drained, DB transactions lost.</span>
+<span class="c"># Exec form: java IS PID 1, receives SIGTERM directly, Spring Boot's graceful</span>
+<span class="c"># shutdown hook fires, active requests drain before exit.</span>
+<span class="kw">CMD</span> [<span class="st">"java"</span>, <span class="st">"-jar"</span>, <span class="st">"app.jar"</span>]
+</pre>
+
+<div class="callout callout-green">
+  <strong>Spring Boot graceful shutdown:</strong> Set <code>server.shutdown=graceful</code> and <code>spring.lifecycle.timeout-per-shutdown-phase=20s</code> in <code>application.properties</code>. When the JVM receives SIGTERM (exec form), Spring Boot stops accepting new requests and waits up to 20 seconds for in-flight ones to complete. K8s <code>terminationGracePeriodSeconds</code> (default 30s) must be greater than this timeout. Together these give you zero-dropped-request rolling updates.
+</div>
+
+<hr>
+
+<h2 id="dockerignore">.dockerignore — what to exclude and why</h2>
+
+<p>The build context is the directory tree Docker sends to the daemon before executing the Dockerfile. Without <code>.dockerignore</code>, the entire project directory — including <code>target/</code>, <code>.git/</code>, and local <code>.env</code> files — is sent. This matters for three reasons: build context upload time, layer cache invalidation, and secret leakage.</p>
+
+<pre>
+<span class="c"># ── .dockerignore ─────────────────────────────────────────────────────────────</span>
+
+<span class="c"># Compiled output from local maven builds.</span>
+<span class="c"># If target/ is included, Docker sees stale JARs and the COPY pom.xml</span>
+<span class="c"># layer cache may compare file mtimes incorrectly → cache bust on every build.</span>
+<span class="c"># Also: target/ can be 200MB+ of downloaded JARs — no reason to send to daemon.</span>
+<span class="st">target/</span>
+
+<span class="c"># Git history. Adds tens of MB to context with zero benefit. Also: git objects</span>
+<span class="c"># contain every version of every file ever committed — potential secret exposure</span>
+<span class="c"># if a dev ever committed a key (even if subsequently removed from HEAD).</span>
+<span class="st">.git/</span>
+<span class="st">.gitignore</span>
+
+<span class="c"># Local environment files. These must NEVER enter the image.</span>
+<span class="c"># .env, .env.local, .env.production — all carry secrets (DB passwords, API keys).</span>
+<span class="c"># In production: inject via K8s Secrets → env vars, or AWS Secrets Manager.</span>
+<span class="st">.env</span>
+<span class="st">.env.*</span>
+
+<span class="c"># IDE metadata. Tens of MB of index files, caches, run configs.</span>
+<span class="c"># These change frequently → would bust Docker layer cache on every IDE save.</span>
+<span class="st">.idea/</span>
+<span class="st">*.iml</span>
+<span class="st">.vscode/</span>
+
+<span class="c"># Docker files themselves — no reason for the daemon to have them in context.</span>
+<span class="st">Dockerfile*</span>
+<span class="st">docker-compose*.yml</span>
+
+<span class="c"># Test and CI configuration — not needed at runtime, adds to context size.</span>
+<span class="st">*.md</span>
+<span class="st">*.sh</span>
+<span class="st">.gitlab-ci.yml</span>
+<span class="st">.github/</span>
+
+<span class="c"># macOS noise.</span>
+<span class="st">**/.DS_Store</span>
+</pre>
+
+<div class="callout callout-warn">
+  <strong>Secret leakage via build context:</strong> Even if you never <code>COPY .env app/</code> in your Dockerfile, if <code>.env</code> is not in <code>.dockerignore</code>, the file is still sent to the Docker daemon as part of the build context. The daemon stores it in a temporary directory. On a shared CI runner, another build or a compromised layer could read it. Always exclude secrets from build context — period.
+</div>
+
+<hr>
+
+<h2 id="breaks">What breaks without this</h2>
+
+<div class="callout callout-red">
+  <strong>Pitfall 1: Using the <code>latest</code> tag</strong><br><br>
+  You push <code>myservice:latest</code> and Helm deploys it. Your K8s cluster has 3 nodes. Node 1 already has <code>myservice:latest</code> cached from two weeks ago (the old version). Node 2 and Node 3 have no cache. The pod scheduling pulls the image on Nodes 2 and 3 (new version), uses the cache on Node 1 (old version). With <code>imagePullPolicy: IfNotPresent</code> — the default — Kubernetes will NOT re-pull an image that exists locally under the same tag.<br><br>
+  <strong>Result:</strong> 3 pods, 2 different versions, running simultaneously. User requests route to either version. You have no reliable way to tell which version a request hits. Symptoms look like random bugs. Rollback is impossible because you cannot reliably determine what version is running where.<br><br>
+  <strong>Fix:</strong> Always tag with a content-addressed identifier — Git SHA (<code>myservice:abc1234</code>) or the image digest (<code>myservice@sha256:...</code>). Use <code>imagePullPolicy: Always</code> only if you genuinely need to force a pull, but the canonical answer is immutable tags.
+</div>
+
+<div class="callout callout-red">
+  <strong>Pitfall 2: Running as root inside the container</strong><br><br>
+  Without <code>adduser</code> + <code>USER appuser</code>, your JVM process runs as UID 0 (root). If an attacker exploits a Remote Code Execution (RCE) vulnerability in your app (for example, a deserialization gadget in a library), they get a root shell inside the container.<br><br>
+  On clusters without <code>securityContext.runAsNonRoot</code> enforced by PodSecurityAdmission, and without strict seccomp profiles, container root can map to host root via namespace escape vulnerabilities. PCI-DSS and ISO 27001 audits will flag containers running as root as a critical finding.<br><br>
+  <strong>Fix:</strong> <code>addgroup -S appgroup &amp;&amp; adduser -S appuser -G appgroup</code> then <code>USER appuser</code> before <code>CMD</code>. Additionally set <code>securityContext.runAsNonRoot: true</code> and <code>allowPrivilegeEscalation: false</code> in the K8s Deployment spec.
+</div>
+
+<div class="callout callout-red">
+  <strong>Pitfall 3: No build cache layering — copying source before pom.xml</strong><br><br>
+  If your Dockerfile starts with <code>COPY . .</code> (copy everything at once), then <code>RUN mvn package</code>, then every commit to source code invalidates the <code>COPY</code> layer — which in turn invalidates the <code>RUN mvn package</code> layer — which re-downloads all Maven dependencies from the internet on every build.<br><br>
+  A Spring Boot app with Spring Data, Spring Security, Kafka client, and Micrometer has ~150 transitive dependencies. Maven download is 200–500MB per build. On a shared CI runner with a slow NAT gateway, this is 3–5 minutes of pure network wait on every push.<br><br>
+  <strong>Fix:</strong> <code>COPY pom.xml .</code> → <code>RUN mvn dependency:go-offline -B</code> → <code>COPY src ./src</code> → <code>RUN mvn package -DskipTests -B</code>. The dep download layer is cached as long as pom.xml is unchanged, which is true on 95%+ of commits.
+</div>
+
+<hr>
+
+<h2 id="aws">AWS mapping</h2>
+
+<table>
+  <tr>
+    <th>Local / Docker concept</th>
+    <th>AWS equivalent</th>
+    <th>Key difference</th>
+  </tr>
+  <tr>
+    <td>Docker Hub</td>
+    <td>Amazon Elastic Container Registry (ECR)</td>
+    <td>ECR is private by default, IAM-authenticated, co-located with ECS/EKS in the same region (free data transfer). Docker Hub has rate limits on pulls (100/6h anonymous).</td>
+  </tr>
+  <tr>
+    <td><code>docker build</code> on local machine / GitLab runner</td>
+    <td>AWS CodeBuild</td>
+    <td>CodeBuild runs in a managed, ephemeral environment. Layer cache is preserved across builds using an S3-backed cache. Multi-stage builds work identically.</td>
+  </tr>
+  <tr>
+    <td><code>docker run -p 8080:8080</code></td>
+    <td>Amazon ECS (Fargate) or EKS</td>
+    <td>ECS manages task placement, health checks, and rolling updates. EKS gives you full K8s. Fargate removes the need to manage EC2 nodes — AWS provisions the compute per task.</td>
+  </tr>
+  <tr>
+    <td><code>.env</code> file with secrets</td>
+    <td>AWS Secrets Manager + K8s External Secrets Operator (ESO)</td>
+    <td>Never bake secrets into the image or pass as plain env vars via Helm. ESO syncs Secrets Manager values into K8s Secrets. ECS can also inject Secrets Manager values directly as env vars on task definition.</td>
+  </tr>
+  <tr>
+    <td>Manual <code>docker push</code></td>
+    <td>GitLab CI → <code>aws ecr get-login-password | docker login</code> → <code>docker push</code></td>
+    <td>ECR login tokens expire after 12 hours. Use the AWS CLI in the CI job to refresh: <code>aws ecr get-login-password --region eu-west-1 | docker login --username AWS --password-stdin &lt;account&gt;.dkr.ecr.eu-west-1.amazonaws.com</code></td>
+  </tr>
+  <tr>
+    <td>Local image scanning (<code>docker scout</code>)</td>
+    <td>ECR Enhanced Scanning (powered by Amazon Inspector)</td>
+    <td>ECR can scan every image push automatically for CVEs. Results appear in the ECR console and can trigger SNS alerts or block deployment pipelines via EventBridge rules.</td>
+  </tr>
+</table>
+
+<hr>
+
+<h2 id="quiz" class="quiz-section">Quiz</h2>
+
+<div class="question" id="q1">
+  <p>Q1. Your multi-stage Dockerfile copies the entire project before running <code>mvn dependency:go-offline</code>. A teammate changes one line in <code>UserController.java</code> and pushes. What happens on the CI build, and what is the correct fix?</p>
+  <ul class="options" data-correct="4">
+    <li>Nothing unusual — Maven is smart enough to detect that pom.xml didn't change and skips the download.</li>
+    <li>The build fails because Docker detects that source changed after the dependency layer.</li>
+    <li>The build succeeds but the JAR is outdated because Docker uses the cached layer containing old source.</li>
+    <li>Docker invalidates the <code>COPY . .</code> layer (source changed), which cascades to invalidate the <code>RUN mvn dependency:go-offline</code> layer — all 200MB+ of Maven dependencies re-download from scratch. Fix: <code>COPY pom.xml .</code> then <code>RUN mvn dependency:go-offline</code> then <code>COPY src ./src</code>.</li>
+  </ul>
+  <div class="explanation">
+    <strong>Layer cache cascade.</strong> Docker's cache key for a <code>COPY</code> instruction is the checksum of every file in the source set. Copying <code>.</code> (everything) means any changed file — including <code>UserController.java</code> — invalidates that layer. Every subsequent instruction is also invalidated. The correct fix is to copy only <code>pom.xml</code> first, run the dependency download as a separate layer, then copy source. The dependency layer's cache key is only <code>pom.xml</code>'s checksum — unchanged on a pure source edit. In AWS CodeBuild, the same technique applies; CodeBuild also supports explicit S3 layer cache for cross-build persistence.
+  </div>
+</div>
+
+<div class="question" id="q2">
+  <p>Q2. A Spring Boot service is deployed on EKS. During a rolling update, K8s terminates an old pod. Requests to that pod start returning connection resets immediately, even though active HTTP requests were in-flight. The Dockerfile uses shell-form CMD: <code>CMD java -jar app.jar</code>. What is the root cause and the fix?</p>
+  <ul class="options" data-correct="2">
+    <li>The JVM takes too long to start — increase <code>initialDelaySeconds</code> on the liveness probe.</li>
+    <li>Shell form wraps the JVM in <code>/bin/sh -c</code>, making <code>sh</code> PID 1. K8s sends SIGTERM to PID 1 (<code>sh</code>), which does not forward it to the JVM child process. The JVM keeps running briefly but K8s stops routing traffic immediately. After <code>terminationGracePeriodSeconds</code>, SIGKILL fires and the JVM exits abruptly. Fix: exec form <code>CMD ["java", "-jar", "app.jar"]</code> so the JVM is PID 1 and receives SIGTERM directly, allowing Spring Boot's graceful shutdown hook to drain in-flight requests.</li>
+    <li>The pod is missing a <code>preStop</code> hook — add a sleep before termination.</li>
+    <li>The JVM ignores SIGTERM by default — add a JVM shutdown hook manually in <code>main()</code>.</li>
+  </ul>
+  <div class="explanation">
+    <strong>Exec form vs shell form SIGTERM forwarding.</strong> This is one of the most common K8s production bugs. Shell form (<code>CMD java -jar app.jar</code>) expands to <code>/bin/sh -c "java -jar app.jar"</code>. The shell is PID 1; java is a child process. When K8s sends SIGTERM to PID 1, the shell exits immediately — it does not forward signals to children by default. The java process receives SIGTERM only indirectly (when the shell exits and the process group is cleaned up), but by then K8s has often stopped routing traffic. Exec form <code>CMD ["java", "-jar", "app.jar"]</code> makes java PID 1 directly. Combined with <code>server.shutdown=graceful</code> in Spring Boot, the JVM gracefully drains active connections on SIGTERM before exiting.
+  </div>
+</div>
+
+<div class="question" id="q3">
+  <p>Q3. A team pushes <code>myservice:latest</code> after a critical hotfix. The EKS cluster has 3 nodes. Nodes B and C have never run this image. Node A has a cached image tagged <code>myservice:latest</code> from the previous week's deployment. <code>imagePullPolicy</code> is not explicitly set in the Deployment spec (so it defaults to <code>IfNotPresent</code>). What happens, and what is the correct tagging strategy?</p>
+  <ul class="options" data-correct="4">
+    <li>K8s always pulls the latest digest when the tag is <code>latest</code> — no risk of stale images.</li>
+    <li>The cached image on Node A is automatically evicted when a new push to the same tag is detected.</li>
+    <li>All 3 pods will run the new version because Helm updates the Deployment spec, which triggers a rollout.</li>
+    <li>Nodes B and C pull the new image; Node A uses the cached (old) image — K8s does not check the registry if the tag already exists locally with <code>IfNotPresent</code>. Result: 3 pods, 2 different versions, running simultaneously with no visibility. Fix: tag with an immutable identifier (Git SHA: <code>myservice:abc1234f</code>) so the tag changes on every build. A new tag on the Deployment spec forces a pull on all nodes regardless of cache state.</li>
+  </ul>
+  <div class="explanation">
+    <strong>Immutable image tags prevent silent version mixing.</strong> <code>imagePullPolicy: IfNotPresent</code> (the default when the tag is not <code>latest</code>) tells K8s: "if this tag exists locally, don't pull." When you reuse the <code>latest</code> tag, the tag is local on Node A but refers to a stale digest. K8s has no way to know the registry has a newer image under the same tag without pulling. Immutable tags solve this completely: a new Git SHA tag is always new to every node, so K8s always pulls. In GitLab CI: <code>IMAGE_TAG=${CI_COMMIT_SHORT_SHA}</code> → <code>docker build -t myservice:${IMAGE_TAG}</code> → pass <code>IMAGE_TAG</code> to Helm → Kubernetes spec changes → rollout happens. In AWS ECR: enable tag immutability to prevent overwriting an existing tag — any push attempt to an existing tag returns an error, enforcing the discipline at the registry level.
+  </div>
+</div>
+
+<hr>
+
+<div class="ai-section">
+<h2 id="ai">AI Engineering Extension</h2>
+
+<h3>Where AI fits in the container story</h3>
+<p>Containers intersect AI engineering in two directions: AI workloads run inside containers (LLM inference services, embedding servers), and AI agents can operate <em>on</em> the container pipeline (reviewing Dockerfiles, generating release notes, flagging CVEs).</p>
+
+<hr style="border-color: #ede9fe">
+
+<h3>AI as workload — containerising an LLM inference service</h3>
+
+<p>An LLM inference service has different constraints from a Spring Boot app: the model weights are gigabytes, GPU memory limits are hard walls, and startup time is minutes, not seconds.</p>
+
+<div class="ai-callout">
+  <strong>Key differences from a Java service:</strong>
+  <ul>
+    <li><strong>Model weights NOT in the image</strong> — a 7B parameter model (fp16) is ~14GB. Baking it into the image means a 14GB push/pull on every code change, even if the weights are unchanged. Instead: weights live in S3, an init container downloads them to an EFS volume at pod start.</li>
+    <li><strong>GPU base image</strong> — needs NVIDIA CUDA drivers. Use <code>nvidia/cuda:12.2.0-cudnn8-runtime-ubuntu22.04</code>. The CUDA version must match the host driver on the EKS node (GPU node group).</li>
+    <li><strong>startupProbe, not livenessProbe for model load</strong> — model loading takes 60–120s. A liveness probe that fires too early will kill the pod before the model is loaded. <code>startupProbe</code> has its own <code>failureThreshold * periodSeconds</code> budget — set it to 180s total.</li>
+    <li><strong>Memory limits are hard walls</strong> — unlike JVM heap which is configurable, GPU VRAM is a physical limit. OOM on the GPU kills inference silently. Set K8s resource limits: <code>nvidia.com/gpu: 1</code> and test peak inference batch sizes before setting limits.</li>
+  </ul>
+</div>
+
+<pre>
+<span class="c"># ── Stage 1: Build Python dependencies ───────────────────────────────────────</span>
+<span class="kw">FROM</span> <span class="st">python:3.11-slim AS builder</span>
+<span class="kw">WORKDIR</span> <span class="st">/install</span>
+<span class="c"># venv ensures no system Python pollution; --no-cache-dir keeps layer small</span>
+<span class="kw">RUN</span> <span class="st">python -m venv /venv</span>
+<span class="kw">COPY</span> <span class="st">requirements.txt .</span>
+<span class="kw">RUN</span> <span class="st">/venv/bin/pip install --no-cache-dir -r requirements.txt</span>
+
+<span class="c"># ── Stage 2: CUDA runtime + inference service ────────────────────────────────</span>
+<span class="c"># cudnn8-runtime: includes cuDNN for transformer attention ops; not -devel</span>
+<span class="c"># (devel adds CUDA compiler — unnecessary in production, 2GB larger).</span>
+<span class="kw">FROM</span> <span class="st">nvidia/cuda:12.2.0-cudnn8-runtime-ubuntu22.04</span>
+
+<span class="kw">RUN</span> <span class="st">apt-get update &amp;&amp; apt-get install -y python3 &amp;&amp; rm -rf /var/lib/apt/lists/*</span>
+
+<span class="c"># Copy venv from builder — only Python packages, no build tools</span>
+<span class="kw">COPY</span> <span class="st">--from=builder /venv /venv</span>
+<span class="kw">COPY</span> <span class="st">inference_server.py .</span>
+
+<span class="c"># Model weights are NOT here. An init container (aws s3 cp) downloads them</span>
+<span class="c"># to a shared EFS volume (/models) mounted at pod start. The inference server</span>
+<span class="c"># reads /models/llama-3-8b/ at startup. This keeps the image at ~2GB, not 16GB.</span>
+<span class="kw">ENV</span> <span class="st">MODEL_PATH=/models/llama-3-8b</span>
+
+<span class="kw">EXPOSE</span> <span class="nu">8000</span>
+
+<span class="c"># Non-root even for GPU workloads — add user to 'video' group for GPU access</span>
+<span class="kw">RUN</span> <span class="st">groupadd -r inference &amp;&amp; useradd -r -g inference -G video inferenceuser</span>
+<span class="kw">USER</span> <span class="st">inferenceuser</span>
+
+<span class="c"># Exec form for SIGTERM forwarding — same rule as Java services</span>
+<span class="kw">CMD</span> [<span class="st">"/venv/bin/python"</span>, <span class="st">"inference_server.py"</span>]
+</pre>
+
+<p>The corresponding K8s Pod spec snippet:</p>
+
+<pre>
+<span class="c"># K8s Deployment — GPU inference pod config (abbreviated)</span>
+<span class="st">initContainers:</span>
+  - <span class="st">name: download-weights</span>
+    <span class="st">image: amazon/aws-cli:latest</span>
+    <span class="st">command:</span> [<span class="st">"aws"</span>, <span class="st">"s3"</span>, <span class="st">"sync"</span>, <span class="st">"s3://my-models/llama-3-8b"</span>, <span class="st">"/models/llama-3-8b"</span>]
+    <span class="st">volumeMounts:</span>
+      - <span class="st">name: model-storage</span>
+        <span class="st">mountPath: /models</span>
+
+<span class="st">containers:</span>
+  - <span class="st">name: inference</span>
+    <span class="st">image: myrepo/inference:abc1234f</span>
+    <span class="st">resources:</span>
+      <span class="st">limits:</span>
+        <span class="st">nvidia.com/gpu: </span><span class="nu">1</span>         <span class="c"># hard GPU reservation</span>
+        <span class="st">memory: </span><span class="st">"20Gi"</span>           <span class="c"># VRAM + CPU RAM headroom</span>
+    <span class="st">startupProbe:</span>                <span class="c"># budget: 30 checks × 6s = 180s for model load</span>
+      <span class="st">httpGet:</span>
+        <span class="st">path: /health</span>
+        <span class="st">port: </span><span class="nu">8000</span>
+      <span class="st">failureThreshold: </span><span class="nu">30</span>
+      <span class="st">periodSeconds: </span><span class="nu">6</span>
+    <span class="st">livenessProbe:</span>               <span class="c"># only starts checking AFTER startupProbe passes</span>
+      <span class="st">httpGet:</span>
+        <span class="st">path: /health</span>
+        <span class="st">port: </span><span class="nu">8000</span>
+      <span class="st">periodSeconds: </span><span class="nu">30</span>
+</pre>
+
+<hr style="border-color: #ede9fe">
+
+<h3>AI as operator — agents in the Docker/CI pipeline</h3>
+
+<div class="ai-callout">
+  <strong>Claude in GitLab CI — Dockerfile review before build:</strong> Add a CI job that runs before <code>docker build</code>. The job sends the Dockerfile to Claude API with a prompt: "Review this Dockerfile for: running as root, shell-form CMD, missing .dockerignore, using mutable tags, and secrets baked in." Claude returns a structured list of findings. If severity is HIGH, the job fails and blocks the build. This catches the three pitfalls from this lesson automatically on every merge request.
+</div>
+
+<div class="ai-callout">
+  <strong>AI-generated release notes after docker push:</strong> After a successful push to ECR, a GitLab CI job runs <code>git log previous-tag..HEAD --oneline</code> and sends the commit list to Claude with a prompt: "Summarise these commits as user-facing release notes for a fintech payment service. Flag any security fixes." The output is posted as a GitLab release note and a Slack message to <code>#deployments</code>. Zero manual authoring on every release.
+</div>
+
+<div class="ai-callout">
+  <strong>Dockerfile linting agent on Merge Requests:</strong> An MR webhook fires a serverless function (Lambda) that pulls the changed Dockerfile from the GitLab API, runs <code>hadolint</code> (a static linter) and Claude analysis in parallel, merges findings, and posts inline comments on the MR diff via the GitLab API. The AI layer catches semantic issues (e.g. "this CMD won't forward SIGTERM") that hadolint's rule-based approach misses.
+</div>
+
+<hr style="border-color: #ede9fe">
+
+<h3>AWS managed services — when you skip the Dockerfile entirely</h3>
+
+<table>
+  <tr>
+    <th>Scenario</th>
+    <th>Self-managed (Docker)</th>
+    <th>AWS managed</th>
+    <th>Tradeoff</th>
+  </tr>
+  <tr>
+    <td>Container image scanning</td>
+    <td><code>docker scout cves</code> in CI</td>
+    <td>ECR Enhanced Scanning (Amazon Inspector)</td>
+    <td>ECR scanning is always-on, triggers on push, integrates with Security Hub — no CI step to maintain. Self-managed gives more control over which CVEs block deploys.</td>
+  </tr>
+  <tr>
+    <td>LLM inference — foundation model</td>
+    <td>Dockerfile with CUDA base, model weights from S3, GPU node group</td>
+    <td>Amazon Bedrock</td>
+    <td>Bedrock is a fully managed API — no Dockerfile, no GPU fleet, no model weights to manage. You pay per token. Self-managed is cheaper at high volume and gives model customisation (fine-tuning, custom weights).</td>
+  </tr>
+  <tr>
+    <td>LLM inference — custom/fine-tuned model</td>
+    <td>Dockerfile pushed to ECR, deployed on GPU EKS node group</td>
+    <td>SageMaker Real-Time Inference (image pushed to ECR)</td>
+    <td>SageMaker manages autoscaling, multi-model endpoints, and GPU fleet provisioning. Still requires your custom Docker image — pushed to ECR. Best of both: you control the model, AWS manages the fleet.</td>
+  </tr>
+</table>
+
+</div><!-- end .ai-section -->
+
+<div class="footer">
+  <p><strong>Related lessons:</strong>
+    Kubernetes Deployments (coming soon) ·
+    GitLab CI Pipeline (coming soon) ·
+    EKS and ECR Setup (coming soon)
+  </p>
+  <p style="margin-top:0.8rem">
+    <strong>Primary sources:</strong>
+    <a href="https://docs.docker.com/develop/develop-images/multistage-build/" target="_blank">Docker — Multi-stage builds</a> ·
+    <a href="https://docs.docker.com/engine/reference/builder/#cmd" target="_blank">Docker — CMD exec vs shell form</a> ·
+    <a href="https://docs.spring.io/spring-boot/docs/current/reference/html/web.html#web.graceful-shutdown" target="_blank">Spring Boot — Graceful Shutdown</a>
+  </p>
+  <p style="margin-top:1rem; font-style:italic">Ask your teacher agent to clarify any section.</p>
+</div>
+
+<script>
+  document.querySelectorAll('.question').forEach(q => {
+    const opts    = q.querySelectorAll('.options li');
+    const correct = parseInt(q.querySelector('.options').dataset.correct, 10) - 1;
+    const expEl   = q.querySelector('.explanation');
+    let answered  = false;
+    opts.forEach((li, i) => {
+      li.addEventListener('click', () => {
+        if (answered) return;
+        answered = true;
+        opts[correct].classList.add('correct');
+        if (i !== correct) li.classList.add('wrong');
+        expEl.style.display = 'block';
+      });
+    });
+  });
+</script>
+
+</body>
+</html>
