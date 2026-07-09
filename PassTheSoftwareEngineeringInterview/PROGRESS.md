@@ -23,3 +23,4 @@
 | q025 | savings_account_review | code-review | 2026-06-10 | 12m | — | ✅ Pass | Caught: Optional.get(), entity as DTO (both methods), double for money; bonus @Transactional + idempotency |
 | q018 | team_formation_efficiency | algorithms | 2026-06-04 | 20m | — | ✅ Pass | main() in solution; scratch comment block; temp==0 sentinel fragile — prefer explicit target var |
 | q038 | loan_disbursement_review | code-review | 2026-07-08 | — | — | ✅ Pass | 5/5: ==String, double, entity-DTO, @Transactional, missing audit log; missed: @GetMapping on state-change |
+| q040 | payment_wallet | ood | 2026-07-09 | 20m | — | ⏳ Open | — |

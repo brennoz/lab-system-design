@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Payment Wallet — Optimistic Locking &amp; Concurrent Debit Protection</title>
+<style>
+  :root {
+    --ink: #1a1a1a; --muted: #555; --border: #d0d0d0;
+    --accent: #1a56db; --bg-soft: #f8f8f6; --bg-note: #eff6ff;
+    --bg-warn: #fffbeb;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 17px; line-height: 1.75; color: var(--ink);
+    max-width: 860px; margin: 0 auto; padding: 3rem 2rem 6rem;
+  }
+  h1 { font-size: 2rem; line-height: 1.2; margin-bottom: 0.4rem; }
+  h2 { font-size: 1.25rem; margin: 2.5rem 0 0.8rem; padding-left: 0.8rem; border-left: 4px solid var(--accent); }
+  h3 { font-size: 1rem; margin: 1.4rem 0 0.4rem; font-weight: bold; }
+  p  { margin: 0.7rem 0; }
+  ul, ol { padding-left: 1.6rem; margin: 0.6rem 0; }
+  li { margin: 0.3rem 0; }
+  code {
+    font-family: 'Menlo', 'Consolas', monospace; font-size: 0.83em;
+    background: #f0f0f0; padding: 0.1em 0.35em; border-radius: 3px;
+  }
+  pre {
+    font-family: 'Menlo', 'Consolas', monospace; font-size: 0.8em;
+    background: #1e1e2e; color: #cdd6f4;
+    padding: 1rem 1.2rem; border-radius: 6px; overflow-x: auto;
+    margin: 0.8rem 0; line-height: 1.5;
+  }
+  pre .c  { color: #6c7086; font-style: italic; }
+  pre .kw { color: #cba6f7; }
+  pre .ty { color: #89b4fa; }
+  pre .st { color: #a6e3a1; }
+  pre .co { color: #fab387; }
+  pre .an { color: #f38ba8; }
+  table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.88rem; }
+  th { background: var(--bg-soft); text-align: left; padding: 0.5rem 0.8rem; border: 1px solid var(--border); }
+  td { padding: 0.45rem 0.8rem; border: 1px solid var(--border); vertical-align: top; }
+  tr:nth-child(even) td { background: var(--bg-soft); }
+  .meta { color: var(--muted); font-size: 0.88rem; margin-bottom: 2rem; }
+  .callout { background: var(--bg-note); border-left: 4px solid var(--accent); padding: 0.9rem 1.1rem; margin: 1.2rem 0; border-radius: 0 4px 4px 0; }
+  .callout-warn { background: var(--bg-warn); border-left-color: #d97706; }
+  .callout-green { background: #f0fdf4; border-left-color: #16a34a; }
+  .callout-red { background: #fef2f2; border-left-color: #dc2626; }
+  hr { border: none; border-top: 1px solid var(--border); margin: 2.5rem 0; }
+
+  /* ── Architecture diagram ── */
+  .arch-box {
+    border: 1px solid var(--border); border-radius: 6px;
+    background: var(--bg-soft); padding: 1rem 1.2rem;
+    margin: 1rem 0; font-family: 'Menlo', 'Consolas', monospace; font-size: 0.82rem;
+    line-height: 1.9; color: var(--ink);
+    white-space: pre; overflow-x: auto;
+  }
+
+  /* ── Quiz ── */
+  .quiz-section h2 { border-color: #d97706; }
+  .question { border: 1px solid var(--border); border-radius: 6px; padding: 1rem 1.2rem; margin: 1.2rem 0; }
+  .question p { font-weight: bold; margin-bottom: 0.6rem; }
+  .options { list-style: none; padding: 0; }
+  .options li { padding: 0.45rem 0.7rem; margin: 0.3rem 0; border: 1px solid var(--border); border-radius: 4px; cursor: pointer; }
+  .options li:hover { background: #f0f4ff; }
+  .options li.correct { background: #dcfce7; border-color: #16a34a; color: #166534; font-weight: bold; }
+  .options li.wrong   { background: #fee2e2; border-color: #dc2626; color: #991b1b; }
+  .explanation { display: none; margin-top: 0.8rem; padding: 0.7rem 0.9rem; background: var(--bg-soft); border-radius: 4px; font-size: 0.92rem; }
+
+  .toc { background: var(--bg-soft); border-radius: 6px; padding: 1rem 1.4rem; margin: 1.5rem 0; }
+  .toc h4 { margin-bottom: 0.5rem; font-size: 0.95rem; }
+  .toc ol { margin: 0; padding-left: 1.3rem; }
+  .toc li { margin: 0.2rem 0; font-size: 0.9rem; }
+  .toc a { color: var(--accent); text-decoration: none; }
+  .footer { margin-top: 4rem; padding-top: 1.5rem; border-top: 1px solid var(--border); color: var(--muted); font-size: 0.88rem; }
+  a { color: var(--accent); }
+  .badge { display: inline-block; font-size: 0.76rem; padding: 0.1em 0.5em; border-radius: 3px; font-weight: bold; }
+  .badge-blue  { background: #dbeafe; color: #1e40af; }
+  .badge-green { background: #dcfce7; color: #166534; }
+
+  /* ── AI Extension ── */
+  .ai-section h2 { border-color: #7c3aed; }
+</style>
+</head>
+<body>
+
+<h1>Payment Wallet — Optimistic Locking &amp; Concurrent Debit Protection</h1>
+<p class="meta">Category: ood · Topic: payment · Difficulty: medium · Read time: ~20 min</p>
+
+<div class="toc">
+  <h4>Contents</h4>
+  <ol>
+    <li><a href="#problem">The problem — concurrent debit race condition</a></li>
+    <li><a href="#domain">Domain model diagram</a></li>
+    <li><a href="#locking">Optimistic vs pessimistic locking</a></li>
+    <li><a href="#how">How optimistic locking works — step by step</a></li>
+    <li><a href="#wallet">Wallet record</a></li>
+    <li><a href="#repo">WalletRepository interface</a></li>
+    <li><a href="#service">WalletService.debit()</a></li>
+    <li><a href="#aws">In AWS / Distributed Environment</a></li>
+    <li><a href="#quiz">Quiz</a></li>
+    <li><a href="#ai">AI Engineering Extension</a></li>
+  </ol>
+</div>
+
+<hr>
+
+<h2 id="problem">The problem — concurrent debit race condition</h2>
+
+<p>Two API pods each read a <code>Wallet</code> with balance £100. Both check: <em>is 100 &ge; 80? Yes.</em> Both approve an £80 withdrawal. Both commit. Balance becomes £-60.</p>
+
+<p>This is a <strong>read-modify-write race condition</strong> — the most dangerous bug in any payment system. The consequence is money creation out of thin air: a regulatory violation, a direct financial loss, and an immediate audit trigger.</p>
+
+<div class="callout-red callout">
+  <strong>Why it happens:</strong> The check (<code>balance &ge; amount</code>) and the write (<code>balance -= amount</code>) are two separate operations. Without coordination, another pod can sneak its write in between them. In a single-pod system, <code>synchronized</code> on the method would prevent it. In a multi-pod cluster, <code>synchronized</code> does nothing — each pod has its own JVM heap.
+</div>
+
+<hr>
+
+<h2 id="domain">Domain model diagram</h2>
+
+<div class="arch-box">
+Wallet  (aggregate root)
+  walletId : WalletId      ← value object — no primitive obsession
+  ownerId  : String
+  balance  : BigDecimal    ← NEVER double/float (see §5 for why)
+  version  : int           ← optimistic lock counter; JPA manages this with @Version
+
+WalletTransaction  (value object — idempotency record)
+  transactionId : String   ← idempotency key (UUID supplied by caller, not generated here)
+  walletId      : WalletId
+  type          : TransactionType  (CREDIT / DEBIT)
+  amount        : BigDecimal
+  createdAt     : Instant
+</div>
+
+<p>The <code>WalletId</code> value object wraps a raw string — it prevents mixing up wallet IDs with user IDs or transaction IDs in method signatures. The <code>WalletTransaction</code> record is the idempotency receipt: persisting it is what makes the debit replay-safe.</p>
+
+<hr>
+
+<h2 id="locking">Optimistic vs pessimistic locking</h2>
+
+<table>
+  <tr>
+    <th></th>
+    <th>Optimistic</th>
+    <th>Pessimistic</th>
+  </tr>
+  <tr>
+    <td><strong>Mechanism</strong></td>
+    <td>version field + Compare-And-Swap (CAS) in DB</td>
+    <td><code>SELECT FOR UPDATE</code> row lock</td>
+  </tr>
+  <tr>
+    <td><strong>Throughput</strong></td>
+    <td>High — no lock contention in the happy path</td>
+    <td>Low — debits on the same wallet are serialised</td>
+  </tr>
+  <tr>
+    <td><strong>Failure mode</strong></td>
+    <td><code>OptimisticLockException</code> → retry or 409</td>
+    <td>Deadlock if two threads acquire locks in different order</td>
+  </tr>
+  <tr>
+    <td><strong>Best for</strong></td>
+    <td>Low contention — most debits succeed on first try</td>
+    <td>High contention — many concurrent writes on the same row</td>
+  </tr>
+  <tr>
+    <td><strong>JPA annotation</strong></td>
+    <td><code>@Version</code> on the entity field</td>
+    <td><code>LockModeType.PESSIMISTIC_WRITE</code> on the query</td>
+  </tr>
+</table>
+
+<p>Payment wallets are a classic <strong>optimistic locking</strong> use case: the vast majority of debits do not conflict. The rare conflict retries once and succeeds. Pessimistic locking would cap throughput to the rate at which the DB can release row locks — unacceptable during a flash sale or high-traffic event.</p>
+
+<hr>
+
+<h2 id="how">How optimistic locking works — step by step</h2>
+
+<ol>
+  <li>Thread A reads Wallet, gets <code>balance=£100, version=5</code></li>
+  <li>Thread B reads Wallet, also gets <code>balance=£100, version=5</code></li>
+  <li>Thread A calls <code>debit(£80)</code>. Wallet produces a new instance with <code>balance=£20, version=6</code>. Service issues:<br>
+      <code>UPDATE wallet SET balance=20, version=6 WHERE id=? AND version=5</code> → <strong>1 row affected</strong> ✓</li>
+  <li>Thread B also calls <code>debit(£80)</code>. Wallet produces <code>balance=£20, version=6</code>. Service issues the same UPDATE — but version in DB is now 6, not 5 → <strong>0 rows affected</strong></li>
+  <li>Service detects 0 rows affected → throws <code>OptimisticLockException</code></li>
+  <li>Caller catches it and either retries (re-reads wallet, re-checks balance) or returns <code>409 Conflict</code> to client</li>
+</ol>
+
+<div class="callout-green callout">
+  <strong>Key insight:</strong> The version check turns a two-step read-then-write into an atomic single-step compare-and-swap at the database layer. The race window is eliminated because the DB only applies the write if the world still looks the same as when we read it.
+</div>
+
+<hr>
+
+<h2 id="wallet">Wallet record</h2>
+
+<pre>
+<span class="c">// Pattern: Aggregate Root — Wallet owns its balance; no external class can mutate it directly.</span>
+<span class="c">// version field simulates @Version (JPA optimistic lock). In prod: JPA manages this automatically.</span>
+<span class="kw">public record</span> <span class="ty">Wallet</span>(<span class="ty">WalletId</span> walletId, <span class="ty">String</span> ownerId, <span class="ty">BigDecimal</span> balance, <span class="kw">int</span> version) {
+
+    <span class="c">// Why withBalance not a setter? Records are immutable. withBalance creates a new</span>
+    <span class="c">// Wallet with bumped version — caller passes it to the repo which does the CAS check.</span>
+    <span class="kw">public</span> <span class="ty">Wallet</span> withBalance(<span class="ty">BigDecimal</span> newBalance) {
+        <span class="kw">return new</span> <span class="ty">Wallet</span>(walletId, ownerId, newBalance, version + <span class="co">1</span>);
+    }
+
+    <span class="c">// Why BigDecimal not double?</span>
+    <span class="c">// double 0.1 + 0.2 = 0.30000000000000004 — wrong in a financial context.</span>
+    <span class="c">// BigDecimal("0.10") + BigDecimal("0.20") = BigDecimal("0.30") — exact.</span>
+    <span class="c">// Regulatory requirement: monetary amounts must be exact (FCA, PSD2).</span>
+    <span class="kw">public boolean</span> hasSufficientFunds(<span class="ty">BigDecimal</span> amount) {
+        <span class="kw">return</span> balance.compareTo(amount) &gt;= <span class="co">0</span>;
+    }
+}
+</pre>
+
+<p>Records bump the version on every <code>withBalance()</code> call. The repository's CAS check uses the old version to guard the UPDATE. If two threads call <code>withBalance()</code> on the same original <code>Wallet</code>, they both produce <code>version=6</code> — but only the first one's CAS will match the DB which still has <code>version=5</code>; the second finds version already advanced and fails.</p>
+
+<hr>
+
+<h2 id="repo">WalletRepository interface</h2>
+
+<pre>
+<span class="kw">public interface</span> <span class="ty">WalletRepository</span> {
+    <span class="kw">void</span> save(<span class="ty">Wallet</span> wallet);                    <span class="c">// INSERT — new wallet only</span>
+    <span class="ty">Optional</span>&lt;<span class="ty">Wallet</span>&gt; findById(<span class="ty">WalletId</span> id);
+
+    <span class="c">// CAS (Compare-And-Swap): UPDATE WHERE version = expectedVersion</span>
+    <span class="c">// Returns false if version mismatch — caller handles conflict</span>
+    <span class="kw">boolean</span> updateIfVersionMatches(<span class="ty">Wallet</span> wallet);
+
+    <span class="c">// Idempotency: has this transactionId already been processed?</span>
+    <span class="kw">boolean</span> transactionExists(<span class="ty">String</span> transactionId);
+    <span class="kw">void</span> recordTransaction(<span class="ty">WalletTransaction</span> tx);
+}
+</pre>
+
+<p><code>updateIfVersionMatches</code> is the CAS gate. It issues the conditional UPDATE and returns <code>true</code> only when one row was affected. <code>transactionExists</code> and <code>recordTransaction</code> together provide idempotency: check before debit, record after debit. In production these two calls live inside the same DB transaction as the balance UPDATE to make the idempotency record and the balance change atomic.</p>
+
+<hr>
+
+<h2 id="service">WalletService.debit()</h2>
+
+<pre>
+<span class="c">// Why: debit is the critical path — two concurrent calls on same wallet must not both succeed.</span>
+<span class="c">// Algorithm: optimistic CAS (read → check → CAS → throw on conflict; caller retries).</span>
+<span class="c">// Alternative (pessimistic lock) would serialise all debits on same wallet → lower throughput.</span>
+<span class="kw">public</span> <span class="ty">WalletTransaction</span> debit(<span class="ty">WalletId</span> walletId, <span class="ty">BigDecimal</span> amount, <span class="ty">String</span> transactionId) {
+
+    <span class="c">// Idempotency: replay-safe. If this transactionId was already processed, return early.</span>
+    <span class="c">// In prod: network retry from client must not double-debit.</span>
+    <span class="kw">if</span> (walletRepo.transactionExists(transactionId)) {
+        <span class="kw">throw new</span> <span class="ty">DuplicateTransactionException</span>(transactionId);
+    }
+
+    <span class="ty">Wallet</span> wallet = walletRepo.findById(walletId)
+            .orElseThrow(() -&gt; <span class="kw">new</span> <span class="ty">WalletNotFoundException</span>(walletId));
+
+    <span class="kw">if</span> (!wallet.hasSufficientFunds(amount)) {
+        <span class="kw">throw new</span> <span class="ty">InsufficientFundsException</span>(walletId, amount, wallet.balance());
+    }
+
+    <span class="ty">Wallet</span> updated = wallet.withBalance(wallet.balance().subtract(amount));
+
+    <span class="c">// CAS: only succeeds if version still matches what we read.</span>
+    <span class="c">// If another thread committed first, version bumped → false → OptimisticLockException.</span>
+    <span class="kw">if</span> (!walletRepo.updateIfVersionMatches(updated)) {
+        <span class="kw">throw new</span> <span class="ty">OptimisticLockException</span>(<span class="st">"Concurrent debit conflict on wallet "</span> + walletId);
+    }
+
+    <span class="ty">WalletTransaction</span> tx = <span class="kw">new</span> <span class="ty">WalletTransaction</span>(transactionId, walletId,
+            <span class="ty">TransactionType</span>.DEBIT, amount, <span class="ty">Instant</span>.now());
+    walletRepo.recordTransaction(tx);
+    <span class="kw">return</span> tx;
+}
+</pre>
+
+<div class="callout callout-warn">
+  <strong>Interview check:</strong> The idempotency check comes <em>before</em> the balance read, not after. If you check after the CAS, a race exists where two threads both pass the idempotency check and then race on the CAS — only one wins, which is correct, but you've added unnecessary round trips. Checking first eliminates duplicate work entirely.
+</div>
+
+<hr>
+
+<h2 id="aws">In AWS / Distributed Environment</h2>
+
+<table>
+  <tr>
+    <th>In-memory concept</th>
+    <th>Why it breaks on multi-pod</th>
+    <th>Production fix</th>
+    <th>AWS service</th>
+  </tr>
+  <tr>
+    <td><code>version</code> field + <code>updateIfVersionMatches</code></td>
+    <td>In-memory CAS only works within one JVM — two pods share nothing</td>
+    <td>JPA <code>@Version</code> maps to <code>UPDATE ... WHERE version = ?</code> in PostgreSQL — atomic at DB level</td>
+    <td>RDS Multi-AZ (PostgreSQL) — row-level locking guaranteed</td>
+  </tr>
+  <tr>
+    <td><code>transactionExists</code> + <code>recordTransaction</code></td>
+    <td>In-memory map is per-pod — Pod B doesn't see Pod A's idempotency records</td>
+    <td>Idempotency table in PostgreSQL; unique index on <code>transaction_id</code>; INSERT fails on duplicate</td>
+    <td>RDS or DynamoDB with <code>ConditionExpression: attribute_not_exists(transactionId)</code></td>
+  </tr>
+  <tr>
+    <td>DynamoDB alternative</td>
+    <td>NoSQL CAS instead of SQL version field</td>
+    <td><code>ConditionExpression: version = :expected</code> on every UpdateItem — throws <code>ConditionalCheckFailedException</code> on conflict → same as OptimisticLockException</td>
+    <td>DynamoDB Global Tables for multi-region active-active</td>
+  </tr>
+  <tr>
+    <td>Redis alternative</td>
+    <td>For wallets that must respond in sub-millisecond</td>
+    <td>Redis <code>WATCH key / MULTI / EXEC</code> — optimistic transaction aborts if key modified between WATCH and EXEC</td>
+    <td>ElastiCache (Redis OSS) — use <code>DECR</code> + <code>WATCH</code> for atomic balance decrement</td>
+  </tr>
+  <tr>
+    <td>SQS FIFO per wallet</td>
+    <td>CAS retries add latency spikes under high contention</td>
+    <td>Route all debit messages for a wallet to same FIFO queue (MessageGroupId = walletId) — serialised processing eliminates CAS conflicts entirely</td>
+    <td>SQS FIFO — trades latency for ordering; throughput capped at 300 msg/s per group</td>
+  </tr>
+  <tr>
+    <td>Audit trail (<code>WalletTransaction</code>)</td>
+    <td>In-memory list lost on pod restart</td>
+    <td>Append-only ledger table; DynamoDB Streams → Lambda → S3 with Object Lock (WORM)</td>
+    <td>DynamoDB Streams + S3 Object Lock — immutable regulatory archive</td>
+  </tr>
+</table>
+
+<hr>
+
+<h2 id="quiz" class="quiz-section">Quiz</h2>
+
+<div class="question" id="q1">
+  <p>Q1. Two pods each read a Wallet with balance=£100, version=5. Pod A debits £80 — CAS succeeds, version advances to 6, balance is now £20. Pod B then attempts to debit £80 using the stale version=5 it read earlier. What happens with optimistic locking?</p>
+  <ul class="options" data-correct="2">
+    <li>Both succeed — balance becomes £-60 because CAS does not protect across pods</li>
+    <li>Pod B's CAS issues <code>UPDATE ... WHERE version=5</code>, finds version is now 6, gets 0 rows affected, and throws <code>OptimisticLockException</code> — balance stays £20</li>
+    <li>Pod B waits for Pod A's lock to release before deducting</li>
+    <li>Pod B automatically re-reads the updated version before executing the debit</li>
+  </ul>
+  <div class="explanation">
+    <strong>Pod B's CAS fails with OptimisticLockException.</strong> The CAS guard (<code>WHERE version = 5</code>) is evaluated atomically by the database. By the time Pod B issues its UPDATE, the DB already has version=6 from Pod A's committed write. 0 rows are affected, the service detects this, and throws <code>OptimisticLockException</code>. The caller either retries (re-reads wallet, re-checks balance — which now shows £20, insufficient for £80) or returns 409 Conflict to the client. Option 1 describes the bug that <em>exists without</em> optimistic locking. Options 3 and 4 describe pessimistic locking, which is a different mechanism.
+  </div>
+</div>
+
+<div class="question" id="q2">
+  <p>Q2. A client sends the same debit request twice due to a network retry. Both requests carry the same <code>transactionId</code> (UUID generated client-side). With idempotency correctly implemented, what is the result?</p>
+  <ul class="options" data-correct="2">
+    <li>Two debits are applied — the balance is deducted twice</li>
+    <li>The second request detects the existing <code>transactionId</code>, throws <code>DuplicateTransactionException</code>, and no second debit is applied</li>
+    <li>The second request throws 500 Internal Server Error because the UUID already exists in the DB</li>
+    <li>The first request is rolled back and only the second is applied</li>
+  </ul>
+  <div class="explanation">
+    <strong>Second request is a silent no-op — balance deducted exactly once.</strong> <code>walletRepo.transactionExists(transactionId)</code> returns <code>true</code> on the second call. The service throws <code>DuplicateTransactionException</code> before touching the balance. The caller (REST controller) catches it and returns 200 with the original transaction record — to the client it looks identical to a successful first call. In production: the idempotency record stores the original response payload; the second call returns that payload without re-executing the debit. AWS: DynamoDB <code>ConditionExpression: attribute_not_exists(transactionId)</code> enforces uniqueness atomically — the INSERT fails on duplicate and the Lambda returns the previously stored response.
+  </div>
+</div>
+
+<div class="question" id="q3">
+  <p>Q3. A junior developer changes <code>BigDecimal balance</code> to <code>double balance</code> in the Wallet record to "simplify arithmetic." Which failure scenario is possible?</p>
+  <ul class="options" data-correct="3">
+    <li>Balance becomes negative — <code>BigDecimal</code> has the same precision problem</li>
+    <li>Balance rounds to whole pounds, losing pence precision entirely</li>
+    <li><code>0.1 + 0.2</code> evaluates to <code>0.30000000000000004</code> in IEEE 754 double — small errors accumulate across millions of transactions, causing reconciliation failures and regulatory non-compliance (FCA, PSD2)</li>
+    <li><code>double</code> is 64-bit and has enough precision for any monetary amount</li>
+  </ul>
+  <div class="explanation">
+    <strong>Floating point precision errors accumulate and cause reconciliation failures.</strong> <code>double</code> uses IEEE 754 binary floating point — it cannot represent many decimal fractions exactly. <code>0.1 + 0.2 = 0.30000000000000004</code>. Over millions of transactions, rounding errors accumulate into pence or pound discrepancies. This triggers end-of-day reconciliation failures, regulatory reports that don't balance, and potential FCA/PSD2 audit findings. <code>BigDecimal</code> uses arbitrary-precision decimal arithmetic — <code>new BigDecimal("0.10").add(new BigDecimal("0.20"))</code> returns exactly <code>0.30</code>. Always initialise with a <code>String</code> constructor, not a <code>double</code> literal (<code>new BigDecimal(0.1)</code> has the same precision problem). Option 4 is the most common misconception — 64-bit width addresses magnitude, not decimal precision.
+  </div>
+</div>
+
+<hr>
+
+<div class="ai-section">
+<h2 id="ai">&#x1F916; AI Engineering Extension</h2>
+
+<h3>Where AI fits</h3>
+<p>The <code>WalletService.debit()</code> method is a natural insertion point for a fraud classifier. Before the CAS step commits money, an ML model evaluates whether the transaction looks fraudulent given the user's recent behaviour, merchant category, amount, location, and time-of-day.</p>
+
+<h3>Pattern</h3>
+<p>Binary classifier (approve / decline) trained on labelled transaction features. Features: debit amount, merchant category code, time since last debit, debits-in-last-hour velocity counter, device fingerprint, geolocation delta. Backed by a rule engine fallback for low-confidence predictions.</p>
+
+<h3>Architecture delta</h3>
+<p>New boxes inserted between the idempotency check and the CAS step:</p>
+<ul>
+  <li><strong>FraudDetectionService</strong> — HTTP call to ML model endpoint (SageMaker real-time or Bedrock Claude) with transaction features as JSON; returns <code>APPROVE / DECLINE / REVIEW</code></li>
+  <li><strong>VelocityCounter</strong> — Redis <code>INCR</code> per <code>(walletId, 1h window)</code> — how many debits has this wallet executed in the last hour? Feeds the classifier as a feature</li>
+  <li><strong>FraudDecisionCache</strong> — Redis cache on <code>(walletId, amountBucket, merchantCategoryCode)</code> for repeated identical patterns — avoids redundant ML calls at &lt;20ms</li>
+</ul>
+
+<h3>Tradeoffs</h3>
+<table>
+  <tr><th>Concern</th><th>Detail</th></tr>
+  <tr><td>Latency</td><td>Adds 20–80ms on the debit critical path — SageMaker real-time endpoint; cache hit reduces to &lt;5ms</td></tr>
+  <tr><td>False positives</td><td>Model blocks legitimate transactions — revenue loss, poor UX; tune precision/recall threshold per merchant risk tier</td></tr>
+  <tr><td>Cost</td><td>$0.001–$0.01 per inference call — at 1M debits/day that is $1K–$10K/day; cache hit rate target &gt;60% to control cost</td></tr>
+  <tr><td>Cold start</td><td>Lambda-hosted model: 200ms cold start on first request; use provisioned concurrency for p99 SLO compliance</td></tr>
+  <tr><td>Fallback</td><td>If ML endpoint times out (&gt;150ms), fall back to deterministic rule engine (velocity check only) — never block payment on ML unavailability</td></tr>
+</table>
+
+<h3>AWS managed services</h3>
+<ul>
+  <li><strong>Amazon Bedrock</strong> — managed Claude/Titan inference; no model ops; pay-per-token; good for low-volume or complex reasoning tasks</li>
+  <li><strong>Amazon SageMaker real-time endpoint</strong> — host custom XGBoost or neural fraud model; sub-50ms p99; auto-scales with traffic</li>
+  <li><strong>ElastiCache (Redis OSS)</strong> — velocity counters (<code>INCR</code> + <code>EXPIRE</code>) and inference result cache</li>
+  <li><strong>Amazon Kinesis Data Streams</strong> — stream every debit event to a feature store for model retraining; near-real-time feedback loop</li>
+  <li><strong>Amazon Comprehend</strong> — classify merchant name strings into merchant category codes if the raw merchant string arrives from the acquirer unparsed</li>
+</ul>
+</div>
+
+<div class="question" id="ai-q1">
+  <p>AI-Q: A fraud model runs <em>before</em> the CAS step. The model approves the transaction. Then the CAS fails (another pod's debit committed first, causing an OptimisticLockException). Your service re-reads the wallet and retries. Should you re-run the fraud check on the retry attempt?</p>
+  <ul class="options" data-correct="1">
+    <li>Yes — transaction context may have changed: the velocity counter incremented (one more debit this hour), time has passed, the post-CAS balance is different, and the model may now produce a different signal. Always re-evaluate fraud on retry.</li>
+    <li>No — the model already approved once; re-running wastes latency and money; cache the decision against the transactionId</li>
+    <li>No — the CAS failure is a concurrency event, not a fraud signal; fraud check only needs to run once per transactionId</li>
+    <li>It depends on the model's confidence score — re-run only if confidence was below 95%</li>
+  </ul>
+  <div class="explanation">
+    <strong>Re-run the fraud check.</strong> When the CAS fails and you retry, you re-read the wallet — which now has a lower balance, a higher version, and a higher velocity counter (because the intervening debit incremented it). These are new features the model has not seen. The model's approval on the first attempt was based on state that is now stale. In a fraud context, the velocity counter alone can tip a borderline transaction from APPROVE to REVIEW — and that counter just increased. The extra latency (~20ms) on a retry path (which is rare in low-contention systems) is acceptable given the regulatory consequence of approving a fraudulent transaction. Cache invalidation strategy: use the <code>transactionId</code> as cache key but set TTL to 0 on retry — force a fresh evaluation.
+  </div>
+</div>
+
+<hr>
+
+<div class="footer">
+  <p><strong>Related lessons:</strong>
+    <a href="0001-payment-gateway.html">0001 — Payment Gateway &amp; State Machine</a> ·
+    <a href="../../concepts/ood/0001-how-to-think-ood.html">How to Think About OOD</a>
+  </p>
+  <p style="margin-top:0.8rem">
+    <strong>Primary sources:</strong>
+    <a href="https://martinfowler.com/eaaCatalog/optimisticOfflineLock.html" target="_blank">Fowler — Optimistic Offline Lock</a> ·
+    <a href="https://en.wikipedia.org/wiki/Compare-and-swap" target="_blank">Compare-and-Swap (Wikipedia)</a>
+  </p>
+  <p style="margin-top:1rem; font-style:italic">Ask your teacher agent to clarify any section.</p>
+</div>
+
+<script>
+  document.querySelectorAll('.question').forEach(q => {
+    const opts    = q.querySelectorAll('.options li');
+    const correct = parseInt(q.querySelector('.options').dataset.correct, 10) - 1;
+    const expEl   = q.querySelector('.explanation');
+    let answered  = false;
+    opts.forEach((li, i) => {
+      li.addEventListener('click', () => {
+        if (answered) return;
+        answered = true;
+        opts[correct].classList.add('correct');
+        if (i !== correct) li.classList.add('wrong');
+        expEl.style.display = 'block';
+      });
+    });
+  });
+</script>
+
+</body>
+</html>
