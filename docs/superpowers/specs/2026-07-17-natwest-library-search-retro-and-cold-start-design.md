@@ -74,15 +74,20 @@ PROGRESS.md gets a new row: `q041 | library_search | ood | 2026-07-17 | — | �
 New opt-in command, separate from the normal random `next` distribution (doesn't touch the
 existing 30/20/15/10/8/7/10 category math). Only fires on explicit `next cold`.
 
-**Rules, deliberately different from normal `next`:**
-- No `/teach` lesson generated beforehand — real interviews don't warm you up
-- No `hint` available before `done` — forces working through the freeze rather than
-  escaping it
-- Delivered as bare stub + given tests + pom + one-line ticket text only — no question.md
-  prose explaining intent
+**What stays like normal `next`:** teach-first lesson generation (checks the relevant
+topic's `INDEX.md`, generates before ticket 1 if the concept isn't covered yet) and `hint`
+availability during a ticket, same as every other category.
+
+**What's different, and is the actual point of this mode:**
+- Delivered as bare stub + given tests + pom + a one-line ticket only — no question.md
+  prose walking through intent, constraints, or design hints. The ticket reads like
+  something a PO would say out loud, not a spec document.
 - Progressive: a repo ships with multiple tickets. First `next cold` on a repo reveals
   ticket 1 only. Passing it (`done`) reveals ticket 2 in the same repo, and so on — mirrors
   the escalating-ticket format this NatWest round used.
+- `PROTOCOL.md` (see below) is read once before a session starts, not injected per-ticket —
+  keeps the "tests are the spec, ship simplest thing first" discipline present without
+  turning every ticket into a guided walkthrough.
 
 **Folder structure (new top-level, sibling to `ood/`, `algorithms/`, etc. — not the
 question.md/Solution.java/MyAnswer.java convention, since no prose/hints are exposed):**
@@ -106,8 +111,14 @@ cold-start/
 │   │                                  used to review `done` submissions
 │   ├── 002_transaction_filter/     ← payments vertical variant
 │   └── 003_market_suspension/      ← betting vertical variant
-└── attempts/{date}_{slug}/         ← live attempt copy, kept for retro after `done`
+└── attempts/{date}_{slug}/         ← live attempt copy; hints.md written here on `hint`,
+                                       kept for retro after `done`
 ```
+
+Teach-first still applies: each seed-bank repo is tagged with the underlying category+slug
+it belongs to (e.g. 001 → `ood/library-system`, 002 → `concepts`/payments vertical), and the
+existing `topics/{category}/{slug}/INDEX.md` check runs before ticket 1 — same lesson
+pipeline as normal `next`, just triggered from a cold-start repo instead of a question.md.
 
 **Content sourcing:** hybrid. Seed bank starts with 001 (this exercise's shape) plus 2–3
 more Claude-authored progressive-ticket repos across the project's existing payment/betting
