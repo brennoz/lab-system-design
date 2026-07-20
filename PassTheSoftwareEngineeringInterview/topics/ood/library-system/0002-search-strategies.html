@@ -61,7 +61,7 @@
 </div>
 
 <h1>Lesson 02 — Library Search: Four Layers, One Interview</h1>
-<div class="meta">Category: OOD · Difficulty: Easy-Medium · Est. time: 20 min · Lesson 2 of N</div>
+<div class="meta">Category: OOD · Difficulty: Easy-Medium · Est. time: 25 min · Lesson 2 of N</div>
 
 <p>
   This is the retro of a real NatWest take-home: a <code>Library.search(String)</code> stub
@@ -76,7 +76,9 @@
   Fix the given bug with a plain filter, then explain <em>in one sentence each</em> why you'd
   reach for a Specification pattern instead, when relevance ranking would matter, and when a
   linear scan stops being viable at all — and pick the right one for the ticket in front of
-  you instead of over- or under-building.
+  you instead of over- or under-building. You'll also be able to read a given test file
+  critically enough to spot a vacuous assertion, without touching a file you were told not
+  to edit.
 </div>
 
 <!-- ─────────────────────────── -->
@@ -228,33 +230,50 @@ public class Library {
 </div>
 
 <!-- ─────────────────────────── -->
-<h2>3. Relevance-ranked search (sketch)</h2>
+<h2>3. Relevance-ranked search</h2>
 
 <p>
   Both layers above are binary: a book matches or it doesn't, and the given tests never
   check order. A real search box needs "Lord of the Flies" to outrank "The Lord of the
-  Rings" when you type "lord of the flies" — full-title matches should sort first.
+  Rings" when you type "lord of the flies" — full-title matches should sort first. This
+  layer is real, compiling, TDD'd code — <code>RankedLibrary.java</code> and
+  <code>RankedLibraryTest.java</code>, alongside <code>Library.java</code> in the same
+  package. It answers a different question than the ticket asked ("which result is most
+  relevant?" instead of "does it match?"), so it's a sibling class, not a replacement.
 </p>
 
 <pre>
-// Sketch only — not part of solution/, no given test asserts on order
+// <span class="kw-why">Why a separate class, not a method added to Library: this answers
+// "how relevant?" not "does it match?" — a different contract (ordered List, not a
+// filtered set), so it earns its own class rather than overloading Library's meaning</span>
 public List&lt;Book&gt; searchRanked(String query) {
     return books.stream()
             .map(b -> new ScoredBook(b, score(b, query)))
-            .filter(sb -> sb.score() > 0)
+            .filter(scored -> scored.score() > 0)
             .sorted(Comparator.comparingInt(ScoredBook::score).reversed())
             .map(ScoredBook::book)
             .collect(Collectors.toList());
 }
 
-private int score(Book b, String query) {
-    if (b.getTitle().equalsIgnoreCase(query)) return 100;
-    if (StringUtils.startsWithIgnoreCase(b.getTitle(), query)) return 50;
-    if (StringUtils.containsIgnoreCase(b.getTitle(), query)) return 10;
-    if (StringUtils.containsIgnoreCase(b.getAuthor(), query)) return 5;
+// Why this tier order: an exact title match is almost certainly what the user meant;
+// starts-with is the next-strongest signal (autocomplete-style); a mid-title substring
+// is weaker; an author-only match is weakest but still relevant, matching the OR
+// contract the plain search() honors.
+private int score(Book book, String query) {
+    if (book.getTitle().equalsIgnoreCase(query)) return 100;
+    if (StringUtils.startsWithIgnoreCase(book.getTitle(), query)) return 50;
+    if (StringUtils.containsIgnoreCase(book.getTitle(), query)) return 10;
+    if (StringUtils.containsIgnoreCase(book.getAuthor(), query)) return 5;
     return 0;
 }
 </pre>
+
+<p>
+  <code>RankedLibraryTest</code> proves the tier order directly: five books, one per tier
+  plus one non-match, asserting <code>results.get(0)</code> through <code>get(3)</code> land
+  in exact → starts-with → contains → author-match order, and the non-match is excluded
+  entirely — not just "some ordering," the specific ordering the scoring function promises.
+</p>
 
 <div class="callout">
   <strong>Cost of this layer</strong>
@@ -264,33 +283,50 @@ private int score(Book b, String query) {
 </div>
 
 <!-- ─────────────────────────── -->
-<h2>4. Index-based search at scale (sketch, system-design angle)</h2>
+<h2>4. Index-based search at scale (system-design angle)</h2>
 
 <p>
   Every layer above scans the entire <code>List&lt;Book&gt;</code> per search call — O(n) per
   query. Fine for hundreds of books in memory. Not fine for a real catalogue of millions,
-  or a service running on more than one instance.
+  or a service running on more than one instance. Real code again —
+  <code>IndexedLibrary.java</code> / <code>IndexedLibraryTest.java</code>. It stores
+  <code>Book</code> references directly in the index rather than inventing an ID field
+  (the given <code>Book</code> class has none, and shouldn't need one just to demo indexing).
 </p>
 
 <pre>
-// Sketch only — inverted index: token → set of book IDs containing that token
-Map&lt;String, Set&lt;String&gt;&gt; titleIndex = new HashMap&lt;&gt;();
+// <span class="kw-pat">Inverted index — whole word (lowercased) -> the set of books containing
+// it, in title or author. Lookup is O(1) average instead of an O(n) scan.</span>
+private final Map&lt;String, Set&lt;Book&gt;&gt; index = new HashMap&lt;&gt;();
 
-void indexBook(Book book) {
-    for (String token : book.getTitle().toLowerCase().split("\\s+")) {
-        titleIndex.computeIfAbsent(token, k -> new HashSet&lt;&gt;()).add(book.getId());
-    }
+public void add(Book book) {
+    indexTokensOf(book.getTitle(), book);
+    indexTokensOf(book.getAuthor(), book);
 }
 
-Set&lt;String&gt; searchByToken(String token) {
-    return titleIndex.getOrDefault(token.toLowerCase(), Set.of());
+public List&lt;Book&gt; search(String token) {
+    return new ArrayList&lt;&gt;(index.getOrDefault(token.toLowerCase(), Set.of()));
+}
+
+private void indexTokensOf(String text, Book book) {
+    for (String token : text.toLowerCase().split("\\s+")) {
+        index.computeIfAbsent(token, key -> new HashSet&lt;&gt;()).add(book);
+    }
 }
 </pre>
 
-<p>
-  A trie would serve prefix search ("type-ahead") better than a hash-based inverted index;
-  the inverted index shown here serves whole-token lookups in O(1) instead of O(n) scan.
-</p>
+<div class="callout warn">
+  <strong>The tradeoff this layer actually costs you</strong>
+  <code>IndexedLibraryTest</code> proves it directly: searching <code>"lord"</code> finds
+  "Lord of the Flies" and "Lord of the Rings" but correctly excludes "Lordship Estates" —
+  different whole word once split. A second test proves searching <code>"lor"</code> —
+  a real substring of "Lord" — returns nothing at all. Every earlier layer
+  (<code>Library</code>, <code>RankedLibrary</code>) matches "lor" via
+  <code>containsIgnoreCase</code>; this one can't, because it only ever indexes whole
+  tokens. O(1) lookup is not a strict upgrade over O(n) scan — it trades away substring
+  matching to get there. A trie would serve prefix search ("type-ahead") better than this
+  hash-based inverted index; the inverted index shown here serves whole-token lookups only.
+</div>
 
 <div class="callout">
   <strong>In AWS / Distributed Environment</strong>
@@ -353,15 +389,87 @@ BookSpecification spec = new AndSpecification(
 </div>
 
 <!-- ─────────────────────────── -->
-<h2>6. What interviewers are actually probing</h2>
+<h2>6. The given test isn't perfect either</h2>
+
+<p>
+  <code>question.md</code> marks the given <code>LibraryTest</code> "DO NOT edit; this is
+  the spec" — for good reason, it's what any solution gets graded against. That doesn't mean
+  it's well-written. Reading a given test critically, without touching it, is its own skill.
+</p>
+
+<pre>
+@Test
+void searchReturnsBookMatchingTitleOrAuthor() {
+    var results = library.search("lord");
+    assertEquals(3, results.size(), "matching books");
+    assertTrue(results.contains(LORD_OF_THE_FLIES));
+    assertTrue(results.contains(LORD_OF_THE_RINGS));
+    assertTrue(results.contains(WAR_AND_PEACE));
+    assertFalse(results.contains(HARRY_POTTER));   // ← HARRY_POTTER was never added in @BeforeEach
+}
+</pre>
+
+<div class="callout warn">
+  <strong>A vacuous assertion</strong>
+  <code>HARRY_POTTER</code> is never <code>library.add()</code>-ed anywhere in this test
+  class. <code>assertFalse(results.contains(HARRY_POTTER))</code> passes unconditionally —
+  a book that was never in the library can never be in the results, regardless of whether
+  <code>search()</code> is correct, broken, or a no-op. It reads like it's proving exclusion
+  works; it proves nothing. A version that actually tested exclusion would need
+  <code>library.add(HARRY_POTTER)</code> in <code>@BeforeEach</code> first.
+</div>
+
+<p>
+  Separately, the first test bundles two unrelated behaviours — an exact-title match and a
+  no-match-returns-empty check — into one method:
+</p>
+
+<pre>
+@Test
+void searchReturnsTheSingleBookThatMatchesTheEntireTitle() {
+    var results = library.search("Lord of the Flies");
+    assertEquals(1, results.size(), "matching books");
+    var book = results.get(0);
+    assertSame(LORD_OF_THE_FLIES, book);
+    assertEquals("Lord of the Flies", book.getTitle());
+    assertEquals(0, library.search("no book").size(), "matching books");   // ← different behaviour, same test
+}
+</pre>
+
+<p>
+  Not wrong — both assertions pass against a correct implementation — but if this test fails,
+  the stack trace alone doesn't tell you which behaviour broke without reading closely.
+  Read as a real interview artifact rather than a model to imitate, this tracks: a test
+  written under the same time pressure as the code it's grading. Spotting these two issues
+  — without editing the file, since it's the spec — is a legitimate thing to say out loud in
+  the room; it demonstrates you're reading the test as carefully as the implementation.
+</p>
+
+<div class="quiz">
+  <div class="question" id="q4">
+    <p>Q4. <code>assertFalse(results.contains(HARRY_POTTER))</code> in the third given test —
+    what's actually wrong with it?</p>
+    <ul class="options" data-correct="3">
+      <li>A) Nothing — it correctly proves non-matching books are excluded from results</li>
+      <li>B) <code>assertFalse</code> is deprecated in JUnit 5</li>
+      <li>C) <code>HARRY_POTTER</code> is never added to the library in this test, so the assertion passes regardless of whether <code>search()</code> works — it tests nothing</li>
+      <li>D) The book title contains a colon, which breaks string comparison</li>
+    </ul>
+    <div class="explanation">A useful exclusion test needs the excluded item to actually be present in the system under test — otherwise "it's not in the results" is true before the code under test even runs. This is worth spotting precisely because the given test is marked "DO NOT edit": you can't fix it, but naming the gap out loud shows you read it as carefully as you read the implementation requirements.</div>
+  </div>
+</div>
+
+<!-- ─────────────────────────── -->
+<h2>7. What interviewers are actually probing</h2>
 
 <table>
   <tr><th>Probe</th><th>Expected answer</th></tr>
   <tr><td>Why did the given test fail?</td><td><code>search()</code> never read its argument — always returned the full catalogue</td></tr>
   <tr><td>Why Specification over a plain filter?</td><td>The ticket already combines two criteria (title OR author) — signal more are coming; Specification keeps <code>Library</code> untouched as criteria grow</td></tr>
   <tr><td>How would you rank results, not just filter them?</td><td>Score each candidate (exact > starts-with > contains), sort descending instead of a binary include/exclude</td></tr>
-  <tr><td>What breaks at catalogue scale?</td><td>Linear scan over <code>List&lt;Book&gt;</code> — an inverted index or trie moves lookup from O(n) to near O(1)/O(k)</td></tr>
+  <tr><td>What breaks at catalogue scale?</td><td>Linear scan over <code>List&lt;Book&gt;</code> — an inverted index or trie moves lookup from O(n) to near O(1)/O(k), at the cost of substring matching</td></tr>
   <tr><td>What breaks on multiple instances?</td><td>An in-memory index is per-process — needs a shared store (OpenSearch) or every instance sees a different catalogue</td></tr>
+  <tr><td>Is the given test itself above criticism?</td><td>No — <code>assertFalse(contains(HARRY_POTTER))</code> is vacuous (never added), and the first test bundles two behaviours. Spot it, don't edit it.</td></tr>
 </table>
 
 <div class="callout">
