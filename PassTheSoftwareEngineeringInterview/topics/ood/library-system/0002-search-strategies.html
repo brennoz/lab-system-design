@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lesson 02 — Library Search: Four Layers, One Interview</title>
+<style>
+  :root {
+    --ink: #1a1a1a; --muted: #555; --border: #ddd;
+    --bg-code: #f7f7f5; --accent: #2563eb;
+    --pass: #16a34a; --fail: #dc2626; --warn: #d97706;
+    --bg: #fefefe; --sidebar: #f3f4f6;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Georgia', serif; font-size: 17px; line-height: 1.7;
+         color: var(--ink); background: var(--bg);
+         max-width: 780px; margin: 0 auto; padding: 3rem 2rem 6rem; }
+  h1 { font-size: 2rem; line-height: 1.2; margin-bottom: 0.4rem; }
+  h2 { font-size: 1.35rem; margin: 2.5rem 0 0.75rem;
+       border-bottom: 1px solid var(--border); padding-bottom: 0.3rem; }
+  h3 { font-size: 1.05rem; margin: 1.4rem 0 0.4rem; color: var(--muted); }
+  p  { margin-bottom: 1rem; }
+  .meta { color: var(--muted); font-size: 0.85rem; font-family: monospace; margin-bottom: 2rem; }
+  .lesson-nav { font-size: 0.85rem; margin-bottom: 3rem; color: var(--muted); }
+  .lesson-nav a { color: var(--accent); text-decoration: none; }
+  .callout { border-left: 4px solid var(--accent); background: var(--sidebar);
+             padding: 0.9rem 1.2rem; margin: 1.5rem 0; border-radius: 0 6px 6px 0; }
+  .callout.warn { border-color: var(--warn); }
+  .callout.pass { border-color: var(--pass); }
+  .callout strong { display: block; margin-bottom: 0.3rem; font-family: monospace; font-size: 0.9rem; }
+  pre { background: var(--bg-code); border: 1px solid var(--border); border-radius: 6px;
+        padding: 1.2rem 1.4rem; overflow-x: auto; font-size: 0.83rem; line-height: 1.6;
+        margin: 1rem 0 1.5rem; font-family: 'Menlo', 'Consolas', monospace; }
+  code { font-family: 'Menlo','Consolas',monospace; font-size: 0.88em;
+         background: var(--bg-code); padding: 0.1em 0.35em; border-radius: 3px; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0 1.5rem; font-size: 0.9rem; }
+  th { background: var(--sidebar); text-align: left; padding: 0.5rem 0.8rem; border-bottom: 2px solid var(--border); }
+  td { padding: 0.45rem 0.8rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+  .quiz { margin: 1.25rem 0 2rem; }
+  .question { margin: 1rem 0; }
+  .question p { font-weight: bold; margin-bottom: 0.75rem; }
+  .options { list-style: none; }
+  .options li { padding: 0.6rem 1rem; border: 1px solid var(--border); border-radius: 5px;
+                margin-bottom: 0.4rem; cursor: pointer; transition: background 0.15s; font-size: 0.92rem; }
+  .options li:hover { background: var(--sidebar); }
+  .options li.correct { background: #dcfce7; border-color: var(--pass); }
+  .options li.wrong   { background: #fee2e2; border-color: var(--fail); }
+  .options li.reveal  { background: #dcfce7; border-color: var(--pass); opacity: 0.6; }
+  .explanation { font-size: 0.88rem; color: var(--muted); margin-top: 0.5rem; display: none;
+                 padding: 0.5rem 0.8rem; background: var(--sidebar); border-radius: 4px; }
+  .explanation.visible { display: block; }
+  .kw-why { color: #9333ea; } .kw-pat { color: #0284c7; }
+  footer { margin-top: 4rem; border-top: 1px solid var(--border);
+           padding-top: 1.5rem; font-size: 0.82rem; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<div class="lesson-nav">
+  <a href="INDEX.md">← Index</a>
+</div>
+
+<h1>Lesson 02 — Library Search: Four Layers, One Interview</h1>
+<div class="meta">Category: OOD · Difficulty: Easy-Medium · Est. time: 20 min · Lesson 2 of N</div>
+
+<p>
+  This is the retro of a real NatWest take-home: a <code>Library.search(String)</code> stub
+  that ignored its own argument. The fix itself is a one-liner. What this lesson actually
+  covers is four different ways to build that one-liner — from "just make the tests pass" to
+  "how would this search work if the catalogue had a million books" — so the next time a
+  search ticket lands, the choice of approach is a decision, not a guess made under pressure.
+</p>
+
+<div class="callout pass">
+  <strong>What you will be able to do after this lesson</strong>
+  Fix the given bug with a plain filter, then explain <em>in one sentence each</em> why you'd
+  reach for a Specification pattern instead, when relevance ranking would matter, and when a
+  linear scan stops being viable at all — and pick the right one for the ticket in front of
+  you instead of over- or under-building.
+</div>
+
+<!-- ─────────────────────────── -->
+<h2>1. Baseline — plain <code>Stream.filter</code></h2>
+
+<p>Given code:</p>
+<pre>
+public List&lt;Book&gt; search(String searchString) {
+    return books;   // never reads searchString — always returns the whole catalogue
+}
+</pre>
+
+<p>Minimal correct fix:</p>
+<pre>
+// <span class="kw-why">Why StringUtils.containsIgnoreCase, not manual toLowerCase().contains():
+// commons-lang3 was on the classpath and unused in the given code — a library visible
+// in the pom and never imported is a hint toward the intended tool, not decoration</span>
+public List&lt;Book&gt; search(String searchString) {
+    return books.stream()
+            .filter(b -> StringUtils.containsIgnoreCase(b.getTitle(), searchString)
+                    || StringUtils.containsIgnoreCase(b.getAuthor(), searchString))
+            .collect(Collectors.toList());
+}
+</pre>
+
+<div class="callout">
+  <strong>This passes every given test. So why keep reading?</strong>
+  Because the next ticket almost always adds a second criterion — filter by genre, exclude
+  borrowed books, search by ISBN — and each one means going back into <code>Library</code>
+  and editing this method again. That's fine once. By the third criterion it's an
+  unreadable wall of <code>||</code>.
+</div>
+
+<div class="quiz">
+  <div class="question" id="q1">
+    <p>Q1. The given <code>pom.xml</code> lists <code>commons-lang3</code>, unused in any given
+    class. What should you conclude?</p>
+    <ul class="options" data-correct="2">
+      <li>A) It's leftover, safe to ignore</li>
+      <li>B) A classpath-visible-but-unused library is a hint toward the intended solution, not decoration</li>
+      <li>C) It must be removed before the project compiles</li>
+      <li>D) It signals Lombok should be used instead</li>
+    </ul>
+    <div class="explanation">A curated pom in a take-home isn't padded randomly. An unused library sitting right there is one of the cheapest signals an interviewer can give — <code>StringUtils.containsIgnoreCase</code> here, not a hand-rolled case fold.</div>
+  </div>
+</div>
+
+<!-- ─────────────────────────── -->
+<h2>2. Specification pattern — the recommended answer</h2>
+
+<p>
+  Each search criterion becomes its own class implementing one interface. Combining
+  criteria is composition, not more <code>||</code> inside <code>Library</code>.
+</p>
+
+<pre>
+// <span class="kw-pat">Pattern: Specification — each business rule (a search criterion) is an object
+// with a single isSatisfiedBy(candidate) method, composable via And/Or/Not</span>
+public interface BookSpecification {
+    boolean isSatisfiedBy(Book book);
+}
+
+public class TitleContainsSpecification implements BookSpecification {
+    private final String fragment;
+
+    public TitleContainsSpecification(String fragment) {
+        this.fragment = fragment;
+    }
+
+    @Override
+    public boolean isSatisfiedBy(Book book) {
+        return StringUtils.containsIgnoreCase(book.getTitle(), fragment);
+    }
+}
+
+public class AuthorContainsSpecification implements BookSpecification {
+    private final String fragment;
+
+    public AuthorContainsSpecification(String fragment) {
+        this.fragment = fragment;
+    }
+
+    @Override
+    public boolean isSatisfiedBy(Book book) {
+        return StringUtils.containsIgnoreCase(book.getAuthor(), fragment);
+    }
+}
+
+// <span class="kw-pat">Combinator — wraps two specifications, satisfied if either is</span>
+public class OrSpecification implements BookSpecification {
+    private final BookSpecification left;
+    private final BookSpecification right;
+
+    public OrSpecification(BookSpecification left, BookSpecification right) {
+        this.left = left;
+        this.right = right;
+    }
+
+    @Override
+    public boolean isSatisfiedBy(Book book) {
+        return left.isSatisfiedBy(book) || right.isSatisfiedBy(book);
+    }
+}
+</pre>
+
+<pre>
+public class Library {
+
+    private final List&lt;Book&gt; books = new ArrayList&lt;&gt;();
+
+    public List&lt;Book&gt; search(String searchString) {
+        BookSpecification spec = new OrSpecification(
+                new TitleContainsSpecification(searchString),
+                new AuthorContainsSpecification(searchString));
+        return books.stream()
+                .filter(spec::isSatisfiedBy)
+                .collect(Collectors.toList());
+    }
+
+    public void add(Book book) {
+        books.add(book);
+    }
+}
+</pre>
+
+<div class="callout warn">
+  <strong>This is more code for the same result — is that over-engineering?</strong>
+  Only if no future ticket ever adds a criterion. In a real take-home, more tickets are
+  coming. The tell that Specification earns its place <em>here</em>: the ticket says
+  "search by title and author" — two criteria, combined — not "search by title." Two
+  combinable criteria in the very first ticket is itself a signal more are coming.
+  If the ticket were single-criterion with no hint of more, the baseline filter would be
+  the right call — don't reach for this pattern reflexively, reach for it because the
+  ticket's shape asked for it.
+</div>
+
+<div class="quiz">
+  <div class="question" id="q2">
+    <p>Q2. What's the actual justification for introducing the Specification pattern on
+    this ticket, rather than treating it as premature abstraction?</p>
+    <ul class="options" data-correct="4">
+      <li>A) Specification pattern is always correct for any filter, regardless of ticket shape</li>
+      <li>B) It makes the code shorter</li>
+      <li>C) It's required whenever <code>Stream</code> is used</li>
+      <li>D) The ticket already combines two criteria (title OR author) in its very first version — that's the signal more criteria are coming, which is what justifies paying the composition cost now instead of later</li>
+    </ul>
+    <div class="explanation">Patterns earn their place from what the ticket's shape implies, not from habit. A single-criterion ticket wouldn't justify this — a multi-criterion one, especially as ticket 1, does.</div>
+  </div>
+</div>
+
+<!-- ─────────────────────────── -->
+<h2>3. Relevance-ranked search (sketch)</h2>
+
+<p>
+  Both layers above are binary: a book matches or it doesn't, and the given tests never
+  check order. A real search box needs "Lord of the Flies" to outrank "The Lord of the
+  Rings" when you type "lord of the flies" — full-title matches should sort first.
+</p>
+
+<pre>
+// Sketch only — not part of solution/, no given test asserts on order
+public List&lt;Book&gt; searchRanked(String query) {
+    return books.stream()
+            .map(b -> new ScoredBook(b, score(b, query)))
+            .filter(sb -> sb.score() > 0)
+            .sorted(Comparator.comparingInt(ScoredBook::score).reversed())
+            .map(ScoredBook::book)
+            .collect(Collectors.toList());
+}
+
+private int score(Book b, String query) {
+    if (b.getTitle().equalsIgnoreCase(query)) return 100;
+    if (StringUtils.startsWithIgnoreCase(b.getTitle(), query)) return 50;
+    if (StringUtils.containsIgnoreCase(b.getTitle(), query)) return 10;
+    if (StringUtils.containsIgnoreCase(b.getAuthor(), query)) return 5;
+    return 0;
+}
+</pre>
+
+<div class="callout">
+  <strong>Cost of this layer</strong>
+  Every candidate gets scored even for a tiny catalogue — fine at hundreds of books, still
+  a full scan under the hood. Ranking changes <em>output order</em>, not the fundamental
+  scaling problem — that's what layer 4 addresses.
+</div>
+
+<!-- ─────────────────────────── -->
+<h2>4. Index-based search at scale (sketch, system-design angle)</h2>
+
+<p>
+  Every layer above scans the entire <code>List&lt;Book&gt;</code> per search call — O(n) per
+  query. Fine for hundreds of books in memory. Not fine for a real catalogue of millions,
+  or a service running on more than one instance.
+</p>
+
+<pre>
+// Sketch only — inverted index: token → set of book IDs containing that token
+Map&lt;String, Set&lt;String&gt;&gt; titleIndex = new HashMap&lt;&gt;();
+
+void indexBook(Book book) {
+    for (String token : book.getTitle().toLowerCase().split("\\s+")) {
+        titleIndex.computeIfAbsent(token, k -> new HashSet&lt;&gt;()).add(book.getId());
+    }
+}
+
+Set&lt;String&gt; searchByToken(String token) {
+    return titleIndex.getOrDefault(token.toLowerCase(), Set.of());
+}
+</pre>
+
+<p>
+  A trie would serve prefix search ("type-ahead") better than a hash-based inverted index;
+  the inverted index shown here serves whole-token lookups in O(1) instead of O(n) scan.
+</p>
+
+<div class="callout">
+  <strong>In AWS / Distributed Environment</strong>
+  This in-memory <code>Map</code> is the same trap as an in-memory rate limiter: it works on
+  one instance and silently diverges the moment there's a second one — two replicas index
+  independently, a book added via instance A is invisible to a search hitting instance B.
+  AWS mapping: OpenSearch (managed Elasticsearch) — a shared, replicated inverted index every
+  instance queries instead of maintaining its own. Failure mode this fixes: stale/inconsistent
+  search results depending on which instance served the request.
+</div>
+
+<div class="quiz">
+  <div class="question" id="q3">
+    <p>Q3. Why does an in-memory <code>Map&lt;String, Set&lt;Book&gt;&gt;</code> index break on a
+    multi-instance deployment even though it works perfectly in a single-instance test?</p>
+    <ul class="options" data-correct="1">
+      <li>A) Each instance builds its own index from whatever books it's seen added locally — a book added via one instance never appears in another instance's index, so search results depend on which instance handled the request</li>
+      <li>B) <code>HashMap</code> is not thread-safe, causing a crash</li>
+      <li>C) Java's <code>Map</code> interface doesn't support Unicode book titles</li>
+      <li>D) The index would run out of memory immediately regardless of instance count</li>
+    </ul>
+    <div class="explanation">Same category of bug as an in-memory rate limiter or in-memory cache in a horizontally-scaled service: state that lives in one process's heap is invisible to every other process. The fix is always the same shape — move the state somewhere shared (Redis, OpenSearch, a database) instead of process-local memory.</div>
+  </div>
+</div>
+
+<!-- ─────────────────────────── -->
+<h2>5. Integration with the existing library system</h2>
+
+<p>
+  This catalogue is deliberately the simplest version of the same domain already built out
+  in <code>q030_library_system</code> (State Pattern, <code>BookCopy</code>) and
+  <code>ex4_library_borrowing</code> (audit trail, <code>Member</code>). The Specification
+  pattern from section 2 is exactly what makes that richer model a clean extension instead
+  of a rewrite.
+</p>
+
+<pre>
+// Sketch — once BookCopy/CopyStatus exists (q030), availability becomes another
+// specification, composed with AND, without touching TitleContainsSpecification,
+// AuthorContainsSpecification, or Library.search() at all
+public class AvailableSpecification implements BookSpecification {
+    @Override
+    public boolean isSatisfiedBy(Book book) {
+        return book.getCopies().stream().anyMatch(c -> c.getStatus() == CopyStatus.AVAILABLE);
+    }
+}
+
+// search() becomes:
+BookSpecification spec = new AndSpecification(
+        new OrSpecification(titleSpec, authorSpec),
+        new AvailableSpecification());
+</pre>
+
+<div class="callout pass">
+  <strong>The bridge, stated plainly</strong>
+  A boolean flag on <code>Book</code> or a scattered if/else would need editing every time a
+  new filter criterion is added. Specification composes. That's the same Open/Closed argument
+  as the State Pattern in Lesson 01 — different pattern, same underlying discipline: new
+  requirement, new class, existing classes untouched.
+</div>
+
+<!-- ─────────────────────────── -->
+<h2>6. What interviewers are actually probing</h2>
+
+<table>
+  <tr><th>Probe</th><th>Expected answer</th></tr>
+  <tr><td>Why did the given test fail?</td><td><code>search()</code> never read its argument — always returned the full catalogue</td></tr>
+  <tr><td>Why Specification over a plain filter?</td><td>The ticket already combines two criteria (title OR author) — signal more are coming; Specification keeps <code>Library</code> untouched as criteria grow</td></tr>
+  <tr><td>How would you rank results, not just filter them?</td><td>Score each candidate (exact > starts-with > contains), sort descending instead of a binary include/exclude</td></tr>
+  <tr><td>What breaks at catalogue scale?</td><td>Linear scan over <code>List&lt;Book&gt;</code> — an inverted index or trie moves lookup from O(n) to near O(1)/O(k)</td></tr>
+  <tr><td>What breaks on multiple instances?</td><td>An in-memory index is per-process — needs a shared store (OpenSearch) or every instance sees a different catalogue</td></tr>
+</table>
+
+<div class="callout">
+  <strong>Ask your teacher</strong>
+  Unclear on when Specification is worth it vs over-engineering? Or how ranking and indexing
+  would actually combine in one system? Ask before moving to the question.
+</div>
+
+<footer>
+  Lesson 02 · Library Search: Four Layers, One Interview · <a href="INDEX.md">← Index</a>
+</footer>
+
+<script>
+  document.querySelectorAll('.question').forEach(q => {
+    const opts    = q.querySelectorAll('li');
+    const correct = parseInt(q.querySelector('.options').dataset.correct) - 1;
+    const expl    = q.querySelector('.explanation');
+    let answered  = false;
+    opts.forEach((li, i) => {
+      li.addEventListener('click', () => {
+        if (answered) return;
+        answered = true;
+        if (i === correct) { li.classList.add('correct'); }
+        else { li.classList.add('wrong'); opts[correct].classList.add('reveal'); }
+        expl.classList.add('visible');
+      });
+    });
+  });
+</script>
+</body>
+</html>
