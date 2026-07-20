@@ -282,6 +282,12 @@ Applies to the `ood` category only — no other category changes delivery shape.
    BigDecimal `==` reference-equality bug). Task: complete it and find what's wrong before
    `done`.
 
+**Folder mirroring (both modes):** `solution/` and `answer/` are created under BOTH
+`src/main/java/.../q{NNN}_{slug}/` AND `src/test/java/.../q{NNN}_{slug}/` — not just
+`src/main`. Test code (the reference test suite in `solution/`, and wherever the learner's
+own tests eventually land in `answer/`) mirrors the same `solution/`/`answer/` split as the
+implementation code, exactly matching each package's directory layout.
+
 **Both modes:** TDD is mandatory. JUnit 5 + Mockito only — no AssertJ (standing project-wide
 rule, restated here since it's load-bearing for OOD specifically).
 
