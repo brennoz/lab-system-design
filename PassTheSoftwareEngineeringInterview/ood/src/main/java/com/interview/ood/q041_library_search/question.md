@@ -1,4 +1,4 @@
-**Lessons:** [0002 Library Search: Four Layers, One Interview](../../../../../topics/ood/library-system/0002-search-strategies.html)
+**Lessons:** [0002 Library Search: Four Layers, One Interview](../../../../../../../../topics/ood/library-system/0002-search-strategies.html)
 
 # q041 — Library Search (NatWest Retro)
 
@@ -16,6 +16,9 @@
 
 ```java
 // Book.java — given, do not change
+import org.apache.commons.lang3.builder.ToStringBuilder;
+import org.apache.commons.lang3.builder.ToStringStyle;
+
 public class Book {
     private final String title;
     private final String author;
@@ -27,6 +30,11 @@ public class Book {
 
     public String getTitle() { return title; }
     public String getAuthor() { return author; }
+
+    @Override
+    public String toString() {
+        return new ToStringBuilder(this, ToStringStyle.SIMPLE_STYLE).append(title).toString();
+    }
 }
 ```
 
@@ -108,8 +116,9 @@ wasn't wasted effort, see the linked lesson's section 5 for exactly how it conne
 
 ---
 
-## Folder layout (standard for `next ood` from q041 onward — see CLAUDE.md's
-## "OOD Delivery Convention")
+## Folder layout
+
+(Standard for `next ood` from q041 onward — see CLAUDE.md's "OOD Delivery Convention" section.)
 
 ```
 q041_library_search/
