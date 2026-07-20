@@ -1,6 +1,6 @@
 **Lessons:** [0002 Library Search: Four Layers, One Interview](../../../../../../../../topics/ood/library-system/0002-search-strategies.html)
 
-# q041 — Library Search (NatWest Retro)
+# q042 — Library Search (NatWest Retro)
 
 **Category:** OOD · **Difficulty:** Easy-Medium · **Ideal time:** 20 min
 
@@ -118,10 +118,10 @@ wasn't wasted effort, see the linked lesson's section 5 for exactly how it conne
 
 ## Folder layout
 
-(Standard for `next ood` from q041 onward — see CLAUDE.md's "OOD Delivery Convention" section.)
+(Standard for `next ood` from q042 onward — see CLAUDE.md's "OOD Delivery Convention" section.)
 
 ```
-q041_library_search/
+q042_library_search/
 ├── question.md
 ├── solution/   ← full Specification-pattern implementation, heavily commented, TDD-ordered
 └── answer/     ← empty (.gitkeep) — write from scratch, or study the lesson + solution/ first

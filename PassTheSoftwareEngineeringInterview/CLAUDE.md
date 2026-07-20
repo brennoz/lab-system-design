@@ -286,7 +286,7 @@ Applies to the `ood` category only — no other category changes delivery shape.
 rule, restated here since it's load-bearing for OOD specifically).
 
 This does not apply retroactively to already-built OOD questions (q013, q026, q027, q030,
-q032, q035, q036, q037, q040) — forward-only from q041.
+q032, q035, q036, q037, q040) — forward-only from q042.
 
 ---
 

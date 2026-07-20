@@ -1,4 +1,4 @@
-package com.interview.ood.q041_library_search.solution;
+package com.interview.ood.q042_library_search.solution;
 
 // Combinator — satisfied if either wrapped specification is satisfied. Lets Library.search()
 // combine title/author criteria without knowing anything about how either is evaluated.
