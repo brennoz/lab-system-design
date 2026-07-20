@@ -553,4 +553,16 @@ Before retrying a question, read:
 | messaging | `mvn test -pl messaging` |
 | nosql | `mvn test -pl nosql` |
 | databases | `mvn test -pl databases` |
+| ood | `mvn test -pl ood` |
+| interview-prep | `mvn test -pl interview-prep` |
 | All | `mvn test` |
+
+---
+
+## Testing Stack
+
+**New tests: JUnit 5 + Mockito only — no AssertJ.** `assertj-core` stays as a pom dependency for existing tests that already use it (not retroactively rewritten), but every test written from here on uses plain JUnit 5 (`org.junit.jupiter.api.Assertions`) and Mockito, not AssertJ's fluent `assertThat`.
+
+- `BigDecimal` comparisons: `assertEquals(0, actual.compareTo(expected))` — never `assertEquals(expected, actual)` directly, since `BigDecimal.equals()` is scale-sensitive (`100.00` != `100.0`).
+- Exceptions: `assertThrows(SomeException.class, () -> ...)`.
+- Timeouts/deadlock checks: `assertTimeoutPreemptively(Duration.ofSeconds(N), () -> ...)`.
