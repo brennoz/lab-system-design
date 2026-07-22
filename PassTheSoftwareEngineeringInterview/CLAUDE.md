@@ -270,7 +270,10 @@ Applies to the `ood` category only — no other category changes delivery shape.
    design reasoning, TDD narrative (red → green shown, not just described), and complete
    code for the primary recommended approach. Not a lighter pre-teaching primer.
 2. `solution/` — complete, heavily commented (WHY, not what), TDD-ordered reference
-   implementation matching what the lesson walks through.
+   implementation matching what the lesson walks through. Always includes a runnable
+   `{Entity}Main.java` demonstrating the solution end-to-end (construct the core objects,
+   drive them through a realistic sequence of calls, print/assert observable outcomes) —
+   same precedent as `q030_library_system/solution/LibraryMain.java`.
 3. `answer/` — empty (a `.gitkeep` placeholder only). Write from scratch, or study
    `solution/` and the lesson first — the choice is yours, not enforced by withholding
    content.
@@ -292,7 +295,9 @@ implementation code, exactly matching each package's directory layout.
 rule, restated here since it's load-bearing for OOD specifically).
 
 This does not apply retroactively to already-built OOD questions (q013, q026, q027, q030,
-q032, q035, q036, q037, q040) — forward-only from q042.
+q032, q035, q036, q037, q040) — forward-only from q042. The `{Entity}Main.java`
+requirement specifically is forward-only from q044 — q042 and q043 predate it and were not
+retrofitted.
 
 ---
 
