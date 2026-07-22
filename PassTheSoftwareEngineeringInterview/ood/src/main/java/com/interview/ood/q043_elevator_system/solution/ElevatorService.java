@@ -9,13 +9,13 @@ import java.util.List;
 // Scope note: arrival is modelled as instantaneous — no simulated travel time between
 // floors — same interview-scope simplification as skipping persistence/Spring elsewhere
 // in this project's OOD questions.
-public class ElevatorController {
+public class ElevatorService {
 
     private final Elevator elevator;
     private final SchedulingStrategy strategy;
     private final List<ElevatorRequest> pendingRequests = new ArrayList<>();
 
-    public ElevatorController(Elevator elevator, SchedulingStrategy strategy) {
+    public ElevatorService(Elevator elevator, SchedulingStrategy strategy) {
         this.elevator = elevator;
         this.strategy = strategy;
     }

@@ -80,7 +80,7 @@
   <strong>What you will be able to do after this lesson</strong>
   Given "design an elevator system," name the State and Strategy patterns correctly, explain
   why the state objects — not the elevator — own transition legality, and swap a scheduling
-  algorithm (FCFS vs SCAN) without touching the controller.
+  algorithm (FCFS vs SCAN) without touching the service.
 </div>
 
 <!-- ─────────────────────────── -->
@@ -89,7 +89,7 @@
 <div class="diagram">Elevator System — Core Entities
 
   ┌──────────────────┐  1──N   ┌──────────────────┐
-  │ ElevatorController│◄───────┤  ElevatorRequest │
+  │  ElevatorService │◄───────┤  ElevatorRequest │
   │ (pending queue,   │        │  (floor,         │
   │  SchedulingStrategy)       │   direction)     │
   └─────────┬─────────┘        └──────────────────┘
@@ -104,8 +104,8 @@
   <tr><td><code>Elevator</code></td><td>Current floor + current state — delegates all transition logic to its state object</td><td>Never contains an if/else on status itself</td></tr>
   <tr><td><code>ElevatorState</code></td><td>One state = one class; only its legal transition is a no-op, everything else throws</td><td>Same shape as q030's <code>CopyState</code></td></tr>
   <tr><td><code>ElevatorRequest</code></td><td>Immutable floor + direction pair</td><td>Natural record candidate — pure data, no behaviour</td></tr>
-  <tr><td><code>SchedulingStrategy</code></td><td>Decides which pending request to service next</td><td>Swappable without touching the controller</td></tr>
-  <tr><td><code>ElevatorController</code></td><td>Orchestrates: queues requests, dispatches via strategy when idle, auto-dispatches on door close</td><td>Business rules live here, not in Elevator or the states</td></tr>
+  <tr><td><code>SchedulingStrategy</code></td><td>Decides which pending request to service next</td><td>Swappable without touching the service</td></tr>
+  <tr><td><code>ElevatorService</code></td><td>Orchestrates: queues requests, dispatches via strategy when idle, auto-dispatches on door close</td><td>Business rules live here, not in Elevator or the states</td></tr>
 </table>
 
 <!-- ─────────────────────────── -->
@@ -200,7 +200,7 @@ public class Elevator {
 <p>
   Different dispatch policies exist: serve requests in the order they arrived (FCFS), or
   serve whichever pending floor is physically closest (a simplified SCAN). Swappable
-  without touching <code>ElevatorController</code>.
+  without touching <code>ElevatorService</code>.
 </p>
 
 <pre>
@@ -243,21 +243,21 @@ public class ScanSchedulingStrategy implements SchedulingStrategy {
       <li>C) The strategy object is stateless and reusable across elevators; passing the floor in keeps it that way rather than coupling one strategy instance to one elevator</li>
       <li>D) It's required so `Comparator.comparingInt` can be used</li>
     </ul>
-    <div class="explanation">A stateless strategy can be shared across every elevator in a building (one `ScanSchedulingStrategy` instance, many `ElevatorController`s) instead of needing one strategy instance per elevator. This is the same reason `FineCalculationStrategy` in q030 takes the `Loan` as a parameter rather than storing it.</div>
+    <div class="explanation">A stateless strategy can be shared across every elevator in a building (one `ScanSchedulingStrategy` instance, many `ElevatorService`s) instead of needing one strategy instance per elevator. This is the same reason `FineCalculationStrategy` in q030 takes the `Loan` as a parameter rather than storing it.</div>
   </div>
 </div>
 
 <!-- ─────────────────────────── -->
-<h2>4. ElevatorController — orchestrates dispatch</h2>
+<h2>4. ElevatorService — orchestrates dispatch</h2>
 
 <pre>
-public class ElevatorController {
+public class ElevatorService {
 
     private final Elevator elevator;
     private final SchedulingStrategy strategy;
     private final List&lt;ElevatorRequest&gt; pendingRequests = new ArrayList&lt;&gt;();
 
-    public ElevatorController(Elevator elevator, SchedulingStrategy strategy) {
+    public ElevatorService(Elevator elevator, SchedulingStrategy strategy) {
         this.elevator = elevator;
         this.strategy = strategy;
     }
@@ -288,7 +288,7 @@ public class ElevatorController {
   against interfaces that didn't compile yet, then <code>IdleState</code>/<code>MovingState</code>/
   <code>DoorOpenState</code> filled in until the lifecycle test passed, then
   <code>FcfsSchedulingStrategy</code>/<code>ScanSchedulingStrategy</code> added and verified
-  independently before wiring <code>ElevatorController</code> around them.
+  independently before wiring <code>ElevatorService</code> around them.
 </p>
 
 <div class="callout warn">
@@ -307,7 +307,7 @@ public class ElevatorController {
   <tr><th>Probe</th><th>Expected answer</th></tr>
   <tr><td>Why State Pattern instead of an enum + switch?</td><td>Adding a new state (e.g. <code>OUT_OF_SERVICE</code>) requires only a new class — no existing switch blocks to edit</td></tr>
   <tr><td>Why does <code>Elevator</code> delegate instead of mutating its own status?</td><td>So the state object — not the entity — is the only place transition legality is enforced</td></tr>
-  <tr><td>How would you swap FCFS for SCAN without touching the controller?</td><td>Inject a different <code>SchedulingStrategy</code> implementation — <code>ElevatorController</code>'s constructor already takes the interface</td></tr>
+  <tr><td>How would you swap FCFS for SCAN without touching the service?</td><td>Inject a different <code>SchedulingStrategy</code> implementation — <code>ElevatorService</code>'s constructor already takes the interface</td></tr>
   <tr><td>What happens to a second request queued while the elevator is busy?</td><td>It waits in <code>pendingRequests</code>; <code>closeDoor()</code> re-triggers dispatch so it's picked up automatically</td></tr>
 </table>
 

@@ -10,17 +10,17 @@ import static org.junit.jupiter.api.Assertions.*;
 class SolutionTest {
 
     private Elevator elevator;
-    private ElevatorController controller;
+    private ElevatorService service;
 
     @BeforeEach
     void initialise() {
         elevator = new Elevator("E1", 0);
-        controller = new ElevatorController(elevator, new FcfsSchedulingStrategy());
+        service = new ElevatorService(elevator, new FcfsSchedulingStrategy());
     }
 
     @Test
     void requestFloorMovesElevatorAndOpensDoorAtRequestedFloor() {
-        controller.requestFloor(5, Direction.UP);
+        service.requestFloor(5, Direction.UP);
 
         assertEquals(5, elevator.getCurrentFloor());
         assertEquals("DOOR_OPEN", elevator.getStatus());
@@ -28,14 +28,14 @@ class SolutionTest {
 
     @Test
     void closingDoorDispatchesNextPendingRequestAutomatically() {
-        controller.requestFloor(5, Direction.UP);
-        controller.requestFloor(2, Direction.DOWN);
+        service.requestFloor(5, Direction.UP);
+        service.requestFloor(2, Direction.DOWN);
 
-        controller.closeDoor();
+        service.closeDoor();
 
         assertEquals(2, elevator.getCurrentFloor());
         assertEquals("DOOR_OPEN", elevator.getStatus());
-        assertTrue(controller.getPendingRequests().isEmpty());
+        assertTrue(service.getPendingRequests().isEmpty());
     }
 
     @Test

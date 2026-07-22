@@ -21,12 +21,12 @@ pluggable dispatch algorithm.
    `IDLE` → (move) → `MOVING` → (arrive) → `DOOR_OPEN` → (closeDoor) → `IDLE`. Any other
    transition attempt must throw `IllegalStateException`.
 3. An `ElevatorRequest` captures a requested floor and direction.
-4. `ElevatorController` accepts floor requests and, when the elevator is idle, dispatches
+4. `ElevatorService` accepts floor requests and, when the elevator is idle, dispatches
    the next request by asking a **Strategy Pattern**-injected `SchedulingStrategy` which
    pending request to service next. Two concrete strategies must exist:
    `FcfsSchedulingStrategy` (first-in-first-out) and `ScanSchedulingStrategy` (nearest
    pending floor to the elevator's current position).
-5. When the elevator's door closes, if requests are still pending, the controller
+5. When the elevator's door closes, if requests are still pending, the service
    dispatches the next one automatically — no separate trigger required.
 
 ---
@@ -46,7 +46,7 @@ SchedulingStrategy (interface)
 Direction (enum: UP, DOWN)
 ElevatorRequest (floor, direction)
 Elevator          → holds ElevatorState
-ElevatorController → Elevator + SchedulingStrategy + pending List<ElevatorRequest>
+ElevatorService → Elevator + SchedulingStrategy + pending List<ElevatorRequest>
 ```
 
 ---
@@ -57,7 +57,7 @@ ElevatorController → Elevator + SchedulingStrategy + pending List<ElevatorRequ
   is a domain-modelling exercise, not a real-time simulation.
 - `ElevatorState` implementations must be the only place that throws `IllegalStateException`
   on an illegal transition — `Elevator` itself only delegates.
-- `ElevatorController.closeDoor()` must automatically dispatch the next pending request
+- `ElevatorService.closeDoor()` must automatically dispatch the next pending request
   (if any) after the door actually closes — don't require a separate manual call.
 - No Spring, no persistence, pure Java 21.
 
