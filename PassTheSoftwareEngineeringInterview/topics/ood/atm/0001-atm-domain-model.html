@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lesson 01 — ATM System Domain Model</title>
+<style>
+  :root {
+    --ink: #1a1a1a; --muted: #555; --border: #ddd;
+    --bg-code: #f7f7f5; --accent: #2563eb;
+    --pass: #16a34a; --fail: #dc2626; --warn: #d97706;
+    --bg: #fefefe; --sidebar: #f3f4f6;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Georgia', serif; font-size: 17px; line-height: 1.7;
+         color: var(--ink); background: var(--bg);
+         max-width: 780px; margin: 0 auto; padding: 3rem 2rem 6rem; }
+  h1 { font-size: 2rem; line-height: 1.2; margin-bottom: 0.4rem; }
+  h2 { font-size: 1.35rem; margin: 2.5rem 0 0.75rem;
+       border-bottom: 1px solid var(--border); padding-bottom: 0.3rem; }
+  h3 { font-size: 1.05rem; margin: 1.4rem 0 0.4rem; color: var(--muted); }
+  p  { margin-bottom: 1rem; }
+  .meta { color: var(--muted); font-size: 0.85rem; font-family: monospace; margin-bottom: 2rem; }
+  .lesson-nav { font-size: 0.85rem; margin-bottom: 3rem; color: var(--muted); }
+  .lesson-nav a { color: var(--accent); text-decoration: none; }
+  .callout { border-left: 4px solid var(--accent); background: var(--sidebar);
+             padding: 0.9rem 1.2rem; margin: 1.5rem 0; border-radius: 0 6px 6px 0; }
+  .callout.warn { border-color: var(--warn); }
+  .callout.pass { border-color: var(--pass); }
+  .callout strong { display: block; margin-bottom: 0.3rem; font-family: monospace; font-size: 0.9rem; }
+  pre { background: var(--bg-code); border: 1px solid var(--border); border-radius: 6px;
+        padding: 1.2rem 1.4rem; overflow-x: auto; font-size: 0.83rem; line-height: 1.6;
+        margin: 1rem 0 1.5rem; font-family: 'Menlo', 'Consolas', monospace; }
+  code { font-family: 'Menlo','Consolas',monospace; font-size: 0.88em;
+         background: var(--bg-code); padding: 0.1em 0.35em; border-radius: 3px; }
+  .diagram { font-family: 'Menlo','Consolas',monospace; font-size: 0.78rem;
+             background: var(--bg-code); border: 1px solid var(--border); border-radius: 6px;
+             padding: 1.2rem 1.4rem; line-height: 1.6; margin: 1rem 0 1.5rem;
+             overflow-x: auto; white-space: pre; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0 1.5rem; font-size: 0.9rem; }
+  th { background: var(--sidebar); text-align: left; padding: 0.5rem 0.8rem; border-bottom: 2px solid var(--border); }
+  td { padding: 0.45rem 0.8rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+  .quiz { margin: 1.25rem 0 2rem; }
+  .question { margin: 1rem 0; }
+  .question p { font-weight: bold; margin-bottom: 0.75rem; }
+  .options { list-style: none; }
+  .options li { padding: 0.6rem 1rem; border: 1px solid var(--border); border-radius: 5px;
+                margin-bottom: 0.4rem; cursor: pointer; transition: background 0.15s; font-size: 0.92rem; }
+  .options li:hover { background: var(--sidebar); }
+  .options li.correct { background: #dcfce7; border-color: var(--pass); }
+  .options li.wrong   { background: #fee2e2; border-color: var(--fail); }
+  .options li.reveal  { background: #dcfce7; border-color: var(--pass); opacity: 0.6; }
+  .explanation { font-size: 0.88rem; color: var(--muted); margin-top: 0.5rem; display: none;
+                 padding: 0.5rem 0.8rem; background: var(--sidebar); border-radius: 4px; }
+  .explanation.visible { display: block; }
+  .kw-why { color: #9333ea; } .kw-pat { color: #0284c7; }
+  footer { margin-top: 4rem; border-top: 1px solid var(--border);
+           padding-top: 1.5rem; font-size: 0.82rem; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<div class="lesson-nav">
+  <a href="INDEX.md">← Index</a>
+</div>
+
+<h1>Lesson 01 — ATM System Domain Model</h1>
+<div class="meta">Category: OOD · Difficulty: Medium · Est. time: 25 min · Lesson 1 of N</div>
+
+<p>
+  ATM System is a classic OOD interview question, and the classic reason it's asked is to
+  see whether a candidate reaches for <strong>Command Pattern</strong> for transactions
+  instead of just calling <code>account.withdraw(amount)</code> directly. This lesson builds
+  the full solution: State Pattern for the card session lifecycle (same shape as
+  q030/q043's State write-ups), and Command Pattern for transactions — the first time this
+  project's OOD questions have used Command rather than Specification/State/Strategy.
+</p>
+
+<div class="callout pass">
+  <strong>What you will be able to do after this lesson</strong>
+  Given "design an ATM," name State and Command correctly, explain why a transaction is an
+  object rather than a method call, and say precisely where the authentication guard and the
+  overdraft guard each belong — and why they don't belong in the same place.
+</div>
+
+<!-- ─────────────────────────── -->
+<h2>1. Entities at a glance</h2>
+
+<div class="diagram">ATM System — Core Entities
+
+  ┌─────────────┐  1──1   ┌─────────┐
+  │ AtmService  │◄───────┤AtmSession│  holds ──►  CardState
+  │ (guards on  │        │ (+Account)│             (NoCardState / CardInsertedState /
+  │  AUTHENTICATED)       └─────────┘              AuthenticatedState)
+  └──────┬──────┘
+         │ executes
+  ┌──────▼──────┐
+  │ AtmCommand  │  Withdraw / Deposit / CheckBalance
+  └──────┬──────┘
+         │ acts on
+  ┌──────▼──────┐
+  │  Account    │  BigDecimal balance, throws InsufficientFundsException
+  └─────────────┘</div>
+
+<table>
+  <tr><th>Entity</th><th>Key responsibility</th><th>Interview signal</th></tr>
+  <tr><td><code>AtmSession</code></td><td>Current card state + associated account — delegates all transition logic to its state object</td><td>Never contains an if/else on status itself</td></tr>
+  <tr><td><code>CardState</code></td><td>One status = one class; only its legal transition is a no-op, everything else throws</td><td>Same shape as q030's <code>CopyState</code> / q043's <code>ElevatorState</code></td></tr>
+  <tr><td><code>AtmCommand</code></td><td>A transaction request as an object, not a direct method call</td><td>First Command-pattern question in this project</td></tr>
+  <tr><td><code>Account</code></td><td>Owns the balance and the overdraft guard</td><td>Guard lives here, not in the command or the service</td></tr>
+  <tr><td><code>AtmService</code></td><td>Orchestrates: rejects any command unless the session is authenticated</td><td>The one place the auth guard is allowed to live</td></tr>
+</table>
+
+<!-- ─────────────────────────── -->
+<h2>2. State Pattern — the card session lifecycle</h2>
+
+<div class="diagram">          ┌──────────┐
+          │ NO_CARD  │◄───────────────────────┐
+          └────┬─────┘                        │
+               │ insertCard()                 │
+          ┌────▼─────────┐                    │
+          │CARD_INSERTED │────────────────────┤ ejectCard()
+          └────┬─────────┘                    │ (legal from either state)
+               │ authenticate()               │
+          ┌────▼─────────┐                    │
+          │AUTHENTICATED │────────────────────┘
+          └──────────────┘</div>
+
+<pre>
+// <span class="kw-pat">Pattern: State — each status is an object; only the transition(s) legal from
+// that status are implemented as a no-op, every other method throws IllegalStateException</span>
+public interface CardState {
+    void insertCard(AtmSession session);
+    void authenticate(AtmSession session);
+    void ejectCard(AtmSession session);
+    String name();
+}
+
+public class CardInsertedState implements CardState {
+    @Override
+    public void insertCard(AtmSession session)   { throw new IllegalStateException("Cannot insert card: a card is already inserted"); }
+    @Override
+    public void authenticate(AtmSession session) { session.setState(new AuthenticatedState()); }
+    @Override
+    public void ejectCard(AtmSession session)    { session.setState(new NoCardState()); }
+    @Override public String name()               { return "CARD_INSERTED"; }
+}
+
+// NoCardState and AuthenticatedState follow the same shape. Notably, ejectCard() is legal
+// from BOTH CardInsertedState and AuthenticatedState — a user can back out before or after
+// entering a PIN, always landing back at NoCardState.
+</pre>
+
+<div class="callout warn">
+  <strong>Why NOT model PIN correctness inside CardState</strong>
+  A tempting design: <code>CardInsertedState.authenticate(session, enteredPin)</code> compares
+  the PIN itself and only transitions on a match. Rejected — a state's job is transition
+  <em>legality</em> (is authenticating even allowed right now), not the business decision of
+  whether given credentials are correct. Credential checking belongs to whoever calls
+  <code>session.authenticate()</code> after already verifying the PIN — same separation
+  q043's <code>SchedulingStrategy</code> draws between "is this transition legal" and "which
+  floor should we actually go to."
+</div>
+
+<div class="quiz">
+  <div class="question" id="q1">
+    <p>Q1. Why is <code>ejectCard()</code> legal from both <code>CardInsertedState</code> and
+    <code>AuthenticatedState</code>, rather than only from one of them?</p>
+    <ul class="options" data-correct="2">
+      <li>A) It isn't — only <code>AuthenticatedState</code> should allow it</li>
+      <li>B) A user must be able to take their card back whether or not they've entered a correct PIN yet — cancelling before authentication is a normal flow, not an error</li>
+      <li>C) Java interfaces require every method to be implemented identically across all implementing classes</li>
+      <li>D) It's a shortcut to avoid writing a fourth state class</li>
+    </ul>
+    <div class="explanation">A user who inserts a card and changes their mind before entering a PIN needs their card back without being forced through authentication first. Restricting eject to only AuthenticatedState would trap a hesitant user's card in the machine.</div>
+  </div>
+</div>
+
+<!-- ─────────────────────────── -->
+<h2>3. Command Pattern — transactions as objects</h2>
+
+<p>
+  A withdrawal, deposit, or balance check is represented as an object with a single
+  <code>execute()</code> method, submitted uniformly through <code>AtmService</code>.
+</p>
+
+<pre>
+// <span class="kw-pat">Pattern: Command — a request is an object (which account, what amount),
+// decoupled from when or by whom it's executed</span>
+public interface AtmCommand {
+    void execute();
+}
+
+public class WithdrawCommand implements AtmCommand {
+    private final Account account;
+    private final BigDecimal amount;
+
+    public WithdrawCommand(Account account, BigDecimal amount) {
+        this.account = account;
+        this.amount = amount;
+    }
+
+    @Override
+    public void execute() {
+        account.withdraw(amount);   // overdraft guard lives in Account, not here
+    }
+}
+
+// DepositCommand follows the same shape. CheckBalanceCommand differs slightly — it
+// captures its own result (getLastReadBalance()) since a balance check has nothing to
+// mutate; its entire purpose IS the result.
+</pre>
+
+<div class="callout">
+  <strong>Command vs Strategy — easy to conflate</strong>
+  q043's <code>SchedulingStrategy</code> picks <em>how</em> to do one fixed kind of thing
+  (dispatch a request). <code>AtmCommand</code> represents <em>a specific request to do a
+  specific thing</em>, as a first-class object you could log, queue, or undo. Same
+  "interface with one method" shape on the surface; different intent underneath.
+</div>
+
+<div class="callout warn">
+  <strong>Why bother with Command instead of AtmService.withdraw(account, amount)?</strong>
+  A direct method call is simpler and passes every test in this question's scope. The
+  Command form earns its place the moment a real ATM interview follow-up lands: a
+  transaction log (each <code>AtmCommand</code> is already a loggable object), an undo/
+  reversal feature, or batching transactions for later processing — all natural once a
+  transaction is an object you can store, not a call that's already finished. If no such
+  follow-up were ever coming, the direct method call would be the right call — same
+  "match the model to what the ticket needs" discipline as q041/q042's Specification-pattern
+  discussion.
+</div>
+
+<div class="quiz">
+  <div class="question" id="q2">
+    <p>Q2. Why does <code>Account.withdraw()</code> throw
+    <code>InsufficientFundsException</code>, rather than <code>WithdrawCommand.execute()</code>
+    checking the balance before calling it?</p>
+    <ul class="options" data-correct="3">
+      <li>A) Because Command objects cannot contain any conditional logic</li>
+      <li>B) Because InsufficientFundsException must extend a checked exception class</li>
+      <li>C) Because Account is the one place the overdraft rule is enforced; letting Command also check it would create two places that could disagree about what's allowed</li>
+      <li>D) Because BigDecimal doesn't support comparison operators</li>
+    </ul>
+    <div class="explanation">A Command's job is to encapsulate a request, not to own the business rule about whether it's allowed. If the guard lived in both Account and WithdrawCommand, a future third caller of Account.withdraw() (bypassing the command) could violate the rule the command enforced, or the two checks could drift out of sync over time.</div>
+  </div>
+</div>
+
+<!-- ─────────────────────────── -->
+<h2>4. AtmService — where the two guards actually live</h2>
+
+<pre>
+public class AtmService {
+
+    private final AtmSession session;
+
+    public AtmService(AtmSession session) {
+        this.session = session;
+    }
+
+    public void submitCommand(AtmCommand command) {
+        if (!"AUTHENTICATED".equals(session.getStatus())) {
+            throw new IllegalStateException("Cannot submit a transaction before authenticating");
+        }
+        command.execute();
+    }
+}
+</pre>
+
+<p>
+  Two guards, two homes, on purpose: <strong>authentication</strong> is a session-level
+  concern (can ANY command run right now), checked once in <code>AtmService</code> before
+  <code>execute()</code> is even called. <strong>Overdraft</strong> is an account-level
+  concern (can THIS specific withdrawal happen), checked inside <code>Account</code>
+  regardless of how the withdrawal was triggered. Putting both guards in the same place —
+  either both in <code>AtmService</code>, or both in the command — would mean testing
+  <code>WithdrawCommand</code> in isolation always needs a fully set-up authenticated
+  session just to exercise a balance check that has nothing to do with authentication.
+</p>
+
+<div class="quiz">
+  <div class="question" id="q3">
+    <p>Q3. What would break if the "must be authenticated" check moved from
+    <code>AtmService.submitCommand()</code> into each <code>AtmCommand</code> implementation
+    individually?</p>
+    <ul class="options" data-correct="4">
+      <li>A) Nothing — it's exactly equivalent either way</li>
+      <li>B) BigDecimal arithmetic would start losing precision</li>
+      <li>C) The State pattern would no longer compile</li>
+      <li>D) Every new command type would need to remember to add the same guard itself, and unit-testing a command in isolation would require faking an authenticated session just to test logic unrelated to authentication</li>
+    </ul>
+    <div class="explanation">Centralising the guard in one place both commands pass through means new command types get it for free, and a command can be tested against its own actual responsibility without needing to also stand up session state.</div>
+  </div>
+</div>
+
+<!-- ─────────────────────────── -->
+<h2>5. What interviewers are actually probing</h2>
+
+<table>
+  <tr><th>Probe</th><th>Expected answer</th></tr>
+  <tr><td>Why State Pattern for the card session?</td><td>Adding a new status (e.g. <code>CARD_RETAINED</code> after failed PIN attempts) requires only a new class — no existing switch blocks to edit</td></tr>
+  <tr><td>Why is a transaction an object, not a method call?</td><td>Command Pattern — makes transactions loggable/queueable/reversible without changing AtmService when a new transaction type is added</td></tr>
+  <tr><td>Where does the overdraft check live?</td><td><code>Account.withdraw()</code> — not the command, not the service, so it can't be bypassed by a different caller</td></tr>
+  <tr><td>Where does the authentication check live?</td><td><code>AtmService.submitCommand()</code> — the one place every command passes through</td></tr>
+  <tr><td>Why is <code>ejectCard()</code> legal from two different states?</td><td>Cancelling before entering a PIN is a normal flow, not an error condition</td></tr>
+</table>
+
+<div class="callout">
+  <strong>Ask your teacher</strong>
+  Unclear on when Command earns its place over a direct method call? Or how this would
+  extend to a transaction history / undo feature? Ask before moving to the question.
+</div>
+
+<footer>
+  Lesson 01 · ATM System Domain Model · <a href="INDEX.md">← Index</a>
+</footer>
+
+<script>
+  document.querySelectorAll('.question').forEach(q => {
+    const opts    = q.querySelectorAll('li');
+    const correct = parseInt(q.querySelector('.options').dataset.correct) - 1;
+    const expl    = q.querySelector('.explanation');
+    let answered  = false;
+    opts.forEach((li, i) => {
+      li.addEventListener('click', () => {
+        if (answered) return;
+        answered = true;
+        if (i === correct) { li.classList.add('correct'); }
+        else { li.classList.add('wrong'); opts[correct].classList.add('reveal'); }
+        expl.classList.add('visible');
+      });
+    });
+  });
+</script>
+</body>
+</html>
