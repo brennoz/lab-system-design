@@ -294,6 +294,24 @@ implementation code, exactly matching each package's directory layout.
 **Both modes:** TDD is mandatory. JUnit 5 + Mockito only — no AssertJ (standing project-wide
 rule, restated here since it's load-bearing for OOD specifically).
 
+**Comment density (both modes, both `solution/` and its tests):** heavier than this
+project's general default. Every non-trivial class or method in `solution/` explains, inline:
+1. The design decision made (which pattern, which structure) and why it fits this specific
+   requirement — not a restatement of what the code does.
+2. At least one alternative that was considered and rejected, with the concrete reason
+   (e.g. "enum + switch was rejected because adding a state means editing every switch
+   block").
+3. What NOT to do — the specific mistake this design guards against, ideally naming the
+   actual bug shape (silent state corruption, a strategy holding elevator-specific state and
+   losing reusability, a public setter bypassing a guard).
+
+Test files get the same treatment, not just production code: comment on WHY a test is
+structured the way it is, what it actually verifies vs. what a superficially-similar-but-
+wrong version of the same test would miss. If a test was rewritten after an initial version
+turned out not to test what it claimed, say so and explain why the fixed version is correct
+— this project already caught real examples of that mid-session and it's worth keeping the
+lesson attached to the code, not just in chat history.
+
 This does not apply retroactively to already-built OOD questions (q013, q026, q027, q030,
 q032, q035, q036, q037, q040) — forward-only from q042. The `{Entity}Main.java`
 requirement specifically is forward-only from q044 — q042 and q043 predate it and were not
