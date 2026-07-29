@@ -1,6 +1,7 @@
 **Lessons:**
 - [0001 Tweet Model & Observer (q032 approach)](../../../../../topics/ood/twitter/0001-tweet-model-observer.html)
 - [0002 Service Layer vs Rich Domain Model](../../../../../topics/ood/twitter/0002-twitter-service-layer.html)
+- [0003 Observer-Driven Notifications (Full Solution Walkthrough)](../../../../../topics/ood/twitter/0003-observer-notifications-full-walkthrough.html)
 
 # q035 — Twitter: Service Layer + Explicit Entities + Observer Notifications
 

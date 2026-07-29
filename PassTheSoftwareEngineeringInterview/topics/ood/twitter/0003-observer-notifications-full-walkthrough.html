@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lesson 03 — Twitter: Observer-Driven Notifications (Full Solution Walkthrough)</title>
+<style>
+  :root {
+    --ink: #1a1a1a; --muted: #555; --border: #ddd;
+    --bg-code: #f7f7f5; --accent: #2563eb;
+    --pass: #16a34a; --fail: #dc2626; --warn: #d97706;
+    --bg: #fefefe; --sidebar: #f3f4f6;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Georgia', serif; font-size: 17px; line-height: 1.7;
+         color: var(--ink); background: var(--bg);
+         max-width: 780px; margin: 0 auto; padding: 3rem 2rem 6rem; }
+  h1 { font-size: 2rem; line-height: 1.2; margin-bottom: 0.4rem; }
+  h2 { font-size: 1.35rem; margin: 2.5rem 0 0.75rem;
+       border-bottom: 1px solid var(--border); padding-bottom: 0.3rem; }
+  h2.ai { border-color: #7c3aed; }
+  h3 { font-size: 1.05rem; margin: 1.4rem 0 0.4rem; color: var(--muted); }
+  p  { margin-bottom: 1rem; }
+  .meta { color: var(--muted); font-size: 0.85rem; font-family: monospace; margin-bottom: 2rem; }
+  .lesson-nav { font-size: 0.85rem; margin-bottom: 3rem; color: var(--muted); }
+  .lesson-nav a { color: var(--accent); text-decoration: none; }
+  .callout { border-left: 4px solid var(--accent); background: var(--sidebar);
+             padding: 0.9rem 1.2rem; margin: 1.5rem 0; border-radius: 0 6px 6px 0; }
+  .callout.warn { border-color: var(--warn); }
+  .callout.pass { border-color: var(--pass); }
+  .callout.fail { border-color: var(--fail); }
+  .callout strong { display: block; margin-bottom: 0.3rem; font-family: monospace; font-size: 0.9rem; }
+  pre { background: var(--bg-code); border: 1px solid var(--border); border-radius: 6px;
+        padding: 1.2rem 1.4rem; overflow-x: auto; font-size: 0.83rem; line-height: 1.6;
+        margin: 1rem 0 1.5rem; font-family: 'Menlo', 'Consolas', monospace; }
+  code { font-family: 'Menlo','Consolas',monospace; font-size: 0.88em;
+         background: var(--bg-code); padding: 0.1em 0.35em; border-radius: 3px; }
+  .diagram { font-family: 'Menlo','Consolas',monospace; font-size: 0.78rem;
+             background: var(--bg-code); border: 1px solid var(--border); border-radius: 6px;
+             padding: 1.2rem 1.4rem; line-height: 1.6; margin: 1rem 0 1.5rem;
+             overflow-x: auto; white-space: pre; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0 1.5rem; font-size: 0.9rem; }
+  th { background: var(--sidebar); text-align: left; padding: 0.5rem 0.8rem; border-bottom: 2px solid var(--border); }
+  td { padding: 0.45rem 0.8rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+  .quiz { margin: 1.25rem 0 2rem; }
+  .question { margin: 1rem 0; }
+  .question p { font-weight: bold; margin-bottom: 0.75rem; }
+  .options { list-style: none; }
+  .options li { padding: 0.6rem 1rem; border: 1px solid var(--border); border-radius: 5px;
+                margin-bottom: 0.4rem; cursor: pointer; transition: background 0.15s; font-size: 0.92rem; }
+  .options li:hover { background: var(--sidebar); }
+  .options li.correct { background: #dcfce7; border-color: var(--pass); }
+  .options li.wrong   { background: #fee2e2; border-color: var(--fail); }
+  .options li.reveal  { background: #dcfce7; border-color: var(--pass); opacity: 0.6; }
+  .explanation { font-size: 0.88rem; color: var(--muted); margin-top: 0.5rem; display: none;
+                 padding: 0.5rem 0.8rem; background: var(--sidebar); border-radius: 4px; }
+  .explanation.visible { display: block; }
+  .step-red { color: var(--fail); font-family: monospace; }
+  .step-green { color: var(--pass); font-family: monospace; }
+  footer { margin-top: 4rem; border-top: 1px solid var(--border);
+           padding-top: 1.5rem; font-size: 0.82rem; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<div class="lesson-nav">
+  <a href="INDEX.md">← Index</a> ·
+  <a href="0001-tweet-model-observer.html">Lesson 01 (Rich Domain + Observer feed)</a> ·
+  <a href="0002-twitter-service-layer.html">Lesson 02 (Service Layer)</a>
+</div>
+
+<h1>Lesson 03 — Twitter: Observer-Driven Notifications (Full Solution Walkthrough)</h1>
+<div class="meta">Category: OOD · Difficulty: Medium · Est. time: 30 min · Prerequisite: Lessons 01–02</div>
+
+<p>
+  This lesson is the full, TDD-ordered walkthrough for q035's current form: the Service
+  Layer + explicit entities design from Lesson 02, extended with a second, independent use of
+  the <strong>Observer Pattern</strong> — not for the timeline (that stays pull-based, as
+  Lesson 02 argued it should), but for a <strong>notification feed</strong>: "bob followed
+  you," "bob liked your tweet." Two different problems, two different fan-out strategies,
+  living side by side in the same system on purpose.
+</p>
+
+<div class="callout pass">
+  <strong>What you will be able to do after this lesson</strong>
+  Explain why the timeline and the notification feed use opposite fan-out strategies in the
+  same codebase, correctly place a Subject's <code>notifyObservers()</code> call relative to
+  its own state mutation, and — because this project builds solutions for real, not just
+  describes them — recognise two genuine bugs this exact design produced during
+  implementation, and why the fix for each was a null check, not a bigger abstraction.
+</div>
+
+<!-- ─────────────────────────── -->
+<h2>1. Full entity map</h2>
+
+<div class="diagram">q035 — Service Layer + Observer Notifications
+
+  User, Tweet            ← thin records (no behavior)
+  Follow, Like           ← explicit entities AND event payloads
+  Notification           ← thin record, recipientId + actorId + type + message
+
+  UserRepository, TweetRepository        ← Map-based, simulate persistence
+
+  SocialGraph  ─┐  implements Subject role
+  LikeService  ─┤  (own observer list, notify on mutation)
+                │
+                ▼
+  TwitterEventObserver  (interface: onFollowed, onLiked)
+                │
+                ▼
+  NotificationService   ← the ONE concrete Observer
+                          (resolves IDs → readable messages, stores per-recipient inbox)
+
+  FeedService            ← unchanged from Lesson 02: pull-model timeline, NOT an Observer
+
+  TwitterService          ← Facade: builds everything, wires the Observer
+                             subscription ONCE, exposes register/post/follow/like/getTimeline</div>
+
+<table>
+  <tr><th>Class</th><th>Role</th><th>Pattern</th></tr>
+  <tr><td><code>SocialGraph</code></td><td>Owns follow/unfollow + graph queries</td><td>Subject (Observer)</td></tr>
+  <tr><td><code>LikeService</code></td><td>Owns like/unlike + like counts</td><td>Subject (Observer)</td></tr>
+  <tr><td><code>NotificationService</code></td><td>Builds per-user notification inbox from both event streams</td><td>Concrete Observer</td></tr>
+  <tr><td><code>FeedService</code></td><td>Builds the timeline by querying on demand</td><td>Not Observer — plain query (Lesson 02)</td></tr>
+  <tr><td><code>TwitterService</code></td><td>Facade — builds the graph, subscribes the Observer once</td><td>Facade</td></tr>
+</table>
+
+<!-- ─────────────────────────── -->
+<h2>2. Why two fan-out strategies in one system</h2>
+
+<p>
+  Lesson 02 argued the timeline should be <strong>pull</strong> (fan-out on read): no write-time
+  cost, and — the deciding factor — it supports arbitrary historical queries ("what did I miss
+  since Tuesday") that a push-based cache can't answer without replaying every event. That
+  argument doesn't apply to notifications. A notification inbox has no "arbitrary historical
+  query" requirement — it's inherently an append-only, chronological event log: "here's what
+  happened to you, in order." That's exactly what <strong>push</strong> (Observer) is good at,
+  and there's no query the pull model would answer better here.
+</p>
+
+<div class="callout">
+  <strong>The decision rule, stated plainly</strong>
+  Use push (Observer) when the consumer's job is "react to things that happened, in order."
+  Use pull (query) when the consumer's job is "answer a question about current or historical
+  state that could be asked in many different shapes." Timeline = the second. Notifications =
+  the first.
+</div>
+
+<!-- ─────────────────────────── -->
+<h2>3. The Observer contract — one interface, two events</h2>
+
+<pre>
+// Pattern: Observer — one interface, two methods, not two segregated
+// FollowObserver/LikeObserver interfaces. NotificationService is the only observer in this
+// system and always needs both events; segregating them would only double the bookkeeping
+// (two observer lists to maintain in two Subjects) for no behavioral gain.
+// What NOT to do: don't collapse this into one onEvent(Object event) method — that
+// reintroduces exactly the instanceof/type-switch this question's constraints forbid, since
+// every observer would have to branch on the runtime type to know what happened.
+public interface TwitterEventObserver {
+    void onFollowed(Follow follow);
+    void onLiked(Like like);
+}
+</pre>
+
+<p>
+  <code>Follow</code> and <code>Like</code> do double duty: they're the persisted graph edge
+  <em>and</em> the event payload handed to observers. No separate <code>FollowEvent</code>
+  type exists — reusing the entity means <code>NotificationService</code> resolves everything
+  it needs (who to notify, who caused it, when) from data the Subject already had.
+</p>
+
+<!-- ─────────────────────────── -->
+<h2>4. TDD narrative — building SocialGraph as a Subject, red → green</h2>
+
+<p>
+  This section is the actual build history for this solution, not a cleaned-up retelling.
+  Two real bugs surfaced while wiring the Subject/Observer machinery, and both are worth
+  seeing exactly as they happened — the fix in each case is smaller than the instinct to
+  reach for a bigger abstraction.
+</p>
+
+<h3>Step 1 — RED: the naive unfollow() throws on an absent relationship</h3>
+
+<pre>
+<span class="step-red">// First implementation — looks reasonable, passes every test that follows a real relationship</span>
+public void unfollow(String followerId, String followeeId) {
+    following.getOrDefault(followerId, Set.of()).remove(followeeId);
+    followers.getOrDefault(followeeId, Set.of()).remove(followerId);
+}
+
+<span class="step-red">// A test exercising the untested path:
+//   twitter.getSocialGraph().unfollow(bob.id(), alice.id());  // bob never followed alice
+// throws java.lang.UnsupportedOperationException — NOT a no-op as the spec requires.</span>
+</pre>
+
+<div class="callout fail">
+  <strong>Why this breaks</strong>
+  <code>Map.getOrDefault(key, Set.of())</code> only substitutes the immutable
+  <code>Set.of()</code> when the key is <em>absent</em>. Calling <code>.remove()</code> on that
+  fallback throws unconditionally — Java's immutable collections reject every mutator, whether
+  or not the target element would even have been present. The bug is invisible in code review
+  because <code>getOrDefault(...).remove(...)</code> reads as an idiomatic one-liner; it's only
+  wrong for the specific case of an absent key, which is exactly the case "unfollow someone you
+  never followed" hits every time.
+</div>
+
+<h3>Step 2 — GREEN: null-check before mutating, don't rely on the immutable fallback</h3>
+
+<pre>
+<span class="step-green">public void unfollow(String followerId, String followeeId) {
+    Set&lt;String&gt; followeeSet = following.get(followerId);
+    if (followeeSet != null) {
+        followeeSet.remove(followeeId);
+    }
+    Set&lt;String&gt; followerSet = followers.get(followeeId);
+    if (followerSet != null) {
+        followerSet.remove(followerId);
+    }
+}</span>
+</pre>
+
+<div class="callout pass">
+  <strong>Why this is the right fix, not a bigger one</strong>
+  The instinct might be "always initialize every user's Set eagerly on registration" so
+  <code>get()</code> never returns null. Rejected: that couples <code>SocialGraph</code> to
+  knowing about every registration event up front, and still doesn't fix the root cause —
+  <code>getOrDefault(key, ImmutableFallback).mutate()</code> is the actual anti-pattern, and it
+  would resurface the moment any other method used the same shortcut (which is exactly what
+  happened next).
+</div>
+
+<h3>Step 3 — the same bug class, caught before it shipped: LikeService.unlike()</h3>
+
+<p>
+  <code>LikeService.unlike()</code> was written against the same original (buggy) pattern in
+  the initial plan: <code>likesByTweet.getOrDefault(tweetId, Set.of()).remove(userId)</code>.
+  Because the <code>SocialGraph</code> bug had already been found and fixed by the time
+  <code>LikeService</code> was built, the identical fix — null-checked <code>Map.get()</code> —
+  was applied proactively, before it ever failed a test:
+</p>
+
+<pre>
+public void unlike(String userId, String tweetId) {
+    String key = userId + ":" + tweetId;
+    likes.remove(key);
+    Set&lt;String&gt; likers = likesByTweet.get(tweetId);
+    if (likers != null) {
+        likers.remove(userId);
+    }
+}
+</pre>
+
+<div class="callout">
+  <strong>The generalizable lesson</strong>
+  Once you've found <code>map.getOrDefault(key, ImmutableCollection.of()).mutate()</code> is
+  broken in one place, grep the rest of the codebase for the same shape before moving on —
+  it's a pattern bug, not a one-off typo. (This is also why <code>TweetRepository</code>'s
+  <em>read</em> methods use <code>getOrDefault(key, List.of())</code> safely — reading with a
+  fallback is fine; the bug is specifically calling a <em>mutator</em> on the fallback.)
+</div>
+
+<!-- ─────────────────────────── -->
+<h2>5. SocialGraph — the finished Subject</h2>
+
+<pre>
+public class SocialGraph {
+
+    private final Map&lt;String, Set&lt;String&gt;&gt; following = new HashMap&lt;&gt;();
+    private final Map&lt;String, Set&lt;String&gt;&gt; followers = new HashMap&lt;&gt;();
+    private final List&lt;TwitterEventObserver&gt; observers = new ArrayList&lt;&gt;();
+
+    public void addObserver(TwitterEventObserver observer) {
+        observers.add(observer);
+    }
+
+    public Follow follow(String followerId, String followeeId) {
+        if (followerId.equals(followeeId)) {
+            throw new IllegalArgumentException("A user cannot follow themselves: " + followerId);
+        }
+        following.computeIfAbsent(followerId, k -&gt; new HashSet&lt;&gt;()).add(followeeId);
+        followers.computeIfAbsent(followeeId, k -&gt; new HashSet&lt;&gt;()).add(followerId);
+
+        Follow event = new Follow(followerId, followeeId, Instant.now());
+        // Notify AFTER both maps are consistent — an observer reacting to onFollowed()
+        // must see a fully-updated graph, not a half-written one.
+        for (TwitterEventObserver observer : observers) {
+            observer.onFollowed(event);
+        }
+        return event;
+    }
+
+    // unfollow(), getFollowing(), getFollowers(), isFollowing(), getFollowerCount()
+    // — unchanged from Lesson 02, except unfollow() carries the fix from Section 4.
+}
+</pre>
+
+<div class="callout warn">
+  <strong>Notice what unfollow() does NOT do</strong>
+  It never calls <code>notifyObservers</code>, and it never tries to retract a past
+  notification. "bob followed you" stays true as <em>history</em> even after bob unfollows —
+  notifications are an append-only event log, not a live mirror of current graph state. Same
+  reasoning as why <code>Follow</code>/<code>Like</code> are immutable entities instead of
+  mutable relationship flags.
+</div>
+
+<!-- ─────────────────────────── -->
+<h2>6. NotificationService — the concrete Observer</h2>
+
+<p>
+  One class, subscribed to two Subjects. This is the entire reason
+  <code>TwitterEventObserver</code> exists as a shared interface rather than two unrelated
+  callback types.
+</p>
+
+<pre>
+public class NotificationService implements TwitterEventObserver {
+
+    private final UserRepository userRepository;
+    private final TweetRepository tweetRepository;
+    // Deque + addFirst: O(1) prepend for "newest first" ordering — same shape as
+    // Lesson 01's Feed, applied to notifications instead of tweets.
+    private final Map&lt;String, Deque&lt;Notification&gt;&gt; byRecipient = new HashMap&lt;&gt;();
+
+    public NotificationService(UserRepository userRepository, TweetRepository tweetRepository) {
+        this.userRepository = userRepository;
+        this.tweetRepository = tweetRepository;
+    }
+
+    @Override
+    public void onFollowed(Follow follow) {
+        String actorName = userRepository.findById(follow.followerId())
+                .map(User::username).orElse(follow.followerId());
+        store(new Notification(UUID.randomUUID().toString(), follow.followeeId(),
+                follow.followerId(), NotificationType.FOLLOW, actorName + " followed you",
+                Instant.now()));
+    }
+
+    @Override
+    public void onLiked(Like like) {
+        Optional&lt;Tweet&gt; tweet = tweetRepository.findById(like.tweetId());
+        if (tweet.isEmpty()) return;
+
+        String recipientId = tweet.get().authorId();
+        // Real product requirement, not a defensive guard: don't notify yourself for
+        // liking your own tweet.
+        if (recipientId.equals(like.userId())) return;
+
+        String actorName = userRepository.findById(like.userId())
+                .map(User::username).orElse(like.userId());
+        store(new Notification(UUID.randomUUID().toString(), recipientId, like.userId(),
+                NotificationType.LIKE, actorName + " liked your tweet", Instant.now()));
+    }
+
+    private void store(Notification notification) {
+        byRecipient.computeIfAbsent(notification.recipientId(), k -&gt; new ArrayDeque&lt;&gt;())
+                .addFirst(notification);
+    }
+
+    public List&lt;Notification&gt; getNotifications(String userId) {
+        return List.copyOf(byRecipient.getOrDefault(userId, new ArrayDeque&lt;&gt;()));
+    }
+}
+</pre>
+
+<div class="callout">
+  <strong>Why ID resolution lives here, not in the Subjects</strong>
+  <code>Follow</code>/<code>Like</code> only carry IDs. Turning <code>"u-123 followed
+  u-456"</code> into <code>"alice followed you"</code> needs a username lookup;
+  <code>Like</code>→recipient needs a tweet-author lookup. Doing that resolution in
+  <code>NotificationService</code> (not in <code>SocialGraph</code>/<code>LikeService</code>)
+  keeps the Subjects completely ignorant of what any observer does with their events — they
+  just publish raw domain facts. Neither Subject imports <code>Notification</code>,
+  <code>UserRepository</code>, or <code>TweetRepository</code>.
+</div>
+
+<div class="callout warn">
+  <strong>What NOT to do — the tempting shortcut that would break the pull-model timeline</strong>
+  Don't have <code>NotificationService</code> prepend the new tweet into a cached
+  <code>FeedService</code> timeline on every <code>onFollowed</code>/<code>onLiked</code>.
+  That resurrects exactly the push-based staleness problem Lesson 02 spent a whole section
+  arguing the pull model avoids. Timeline stays pull. Notifications stay push. They're solved
+  separately on purpose — see Section 2.
+</div>
+
+<!-- ─────────────────────────── -->
+<h2>7. TwitterService — wiring the subscription, once</h2>
+
+<pre>
+public TwitterService() {
+    this.userRepository = new UserRepository();
+    this.tweetRepository = new TweetRepository();
+    this.socialGraph = new SocialGraph();
+    this.likeService = new LikeService();
+    this.feedService = new FeedService(socialGraph, tweetRepository);
+    this.notificationService = new NotificationService(userRepository, tweetRepository);
+
+    // Subscribe once, here — the only place SocialGraph/LikeService and
+    // NotificationService know about each other.
+    socialGraph.addObserver(notificationService);
+    likeService.addObserver(notificationService);
+}
+</pre>
+
+<div class="callout fail">
+  <strong>Rejected alternative — the facade publishes events itself</strong>
+  A simpler-looking option: skip the observer machinery, and have
+  <code>TwitterService.follow()</code> call <code>socialGraph.follow(...)</code> and then
+  <em>also</em> call <code>notificationService.onFollowed(...)</code> directly. This compiles,
+  passes every test — and isn't Observer at all, just two sequential method calls. It also
+  doesn't scale: adding a second Subject later means editing <code>TwitterService</code> every
+  time, instead of the new Subject just calling <code>addObserver()</code> on the same,
+  already-built <code>NotificationService</code>.
+</div>
+
+<!-- ─────────────────────────── -->
+<h2>8. Full comparison — three fan-out strategies now in play</h2>
+
+<table>
+  <tr><th>Concern</th><th>Lesson 01 (q032 feed)</th><th>Lesson 02/03 timeline</th><th>Lesson 03 notifications</th></tr>
+  <tr><td>Fan-out direction</td><td>Push (write-time)</td><td>Pull (read-time)</td><td>Push (write-time)</td></tr>
+  <tr><td>Write cost</td><td>O(followers) per post</td><td>O(1) per post</td><td>O(observers) per event — here always 1</td></tr>
+  <tr><td>Read cost</td><td>O(1)</td><td>O(followees × their tweets)</td><td>O(1)</td></tr>
+  <tr><td>"What did I miss since X?"</td><td>Impossible without replay</td><td>Trivially answerable — just query</td><td>N/A — inbox already IS the historical log</td></tr>
+  <tr><td>Who is the Subject?</td><td><code>User</code> (rich domain model)</td><td>n/a — plain query, no Subject</td><td><code>SocialGraph</code>, <code>LikeService</code> (thin services)</td></tr>
+</table>
+
+<p>
+  The interesting takeaway isn't "Observer is good" or "pull is good" in the abstract — it's
+  that the <em>same system</em> correctly uses both, because the timeline and the notification
+  inbox are different problems wearing similar clothes.
+</p>
+
+<!-- ─────────────────────────── -->
+<h2>9. What interviewers are actually probing</h2>
+
+<table>
+  <tr><th>Probe</th><th>Expected answer</th></tr>
+  <tr><td>Why is the timeline pull but notifications push, in the same system?</td><td>Timeline needs arbitrary historical queries; notifications are inherently an append-only event log — the consumer shape decides the fan-out direction, not a blanket rule</td></tr>
+  <tr><td>Why does <code>SocialGraph</code> notify observers instead of the facade?</td><td>The object whose state changes is the Subject (GoF) — the facade only wires the subscription once, so a second Subject never requires editing the facade</td></tr>
+  <tr><td>Why one <code>TwitterEventObserver</code> interface, not two?</td><td>The only observer needs both events; segregating would double bookkeeping for no gain — revisit only if a second, narrower observer appears</td></tr>
+  <tr><td>Why does <code>unfollow()</code> not notify observers or delete past notifications?</td><td>Notifications are historical fact ("this happened"), not a live mirror of current graph state</td></tr>
+  <tr><td>What broke first when this Subject/Observer machinery was actually built?</td><td><code>getOrDefault(key, Set.of()).remove(...)</code> throws on an absent key — calling a mutator on an immutable fallback, not a validation gap</td></tr>
+</table>
+
+<!-- ─────────────────────────── -->
+<h2>10. Retrieval quiz</h2>
+
+<div class="quiz">
+
+  <div class="question" id="q1">
+    <p>Q1. Why does this design use Observer (push) for notifications but stayed with pull
+    (fan-out on read) for the timeline, instead of using Observer for both?</p>
+    <ul class="options" data-correct="3">
+      <li>A) Observer can only be used once per system</li>
+      <li>B) Push is always slower than pull, so it's reserved for low-traffic features</li>
+      <li>C) The notification inbox has no "arbitrary historical query" requirement — it's inherently an append-only chronological log, which is exactly what push is good at. The timeline needs to answer many different possible queries, which push-built caches can't do without replaying every event</li>
+      <li>D) Because NotificationService and FeedService cannot both depend on TweetRepository</li>
+    </ul>
+    <div class="explanation">The deciding factor is what the consumer's job actually is. "React to things that happened, in order" fits push. "Answer a question about state that could be asked many different ways" fits pull. Notifications are the first; timelines are the second.</div>
+  </div>
+
+  <div class="question" id="q2">
+    <p>Q2. In <code>SocialGraph.follow()</code>, why does the observer notification loop run
+    AFTER both the <code>following</code> and <code>followers</code> maps are updated, rather
+    than before?</p>
+    <ul class="options" data-correct="2">
+      <li>A) Java requires all field mutations before any method call in a constructor</li>
+      <li>B) An observer reacting to the event (e.g. NotificationService resolving a username) must see a fully-consistent graph, not a half-written one where only one of the two maps has been updated</li>
+      <li>C) It doesn't matter — the ordering is arbitrary</li>
+      <li>D) Because Follow is an immutable record and must be constructed last</li>
+    </ul>
+    <div class="explanation">If an observer ran mid-mutation, it could observe following updated but followers not yet updated (or vice versa) — a real consistency bug for any observer whose logic depends on graph state, even though NotificationService today doesn't happen to query the graph itself.</div>
+  </div>
+
+  <div class="question" id="q3">
+    <p>Q3. What was the actual root cause of the <code>unfollow()</code> bug found while
+    building this solution?</p>
+    <ul class="options" data-correct="4">
+      <li>A) Forgetting to check if the followerId equals the followeeId</li>
+      <li>B) Using a HashMap instead of a TreeMap for the adjacency lists</li>
+      <li>C) Not synchronizing access to the observer list</li>
+      <li>D) Calling <code>.remove()</code> on the immutable <code>Set.of()</code> fallback that <code>getOrDefault()</code> returns when the key is absent — <code>Set.of()</code> rejects every mutator unconditionally, regardless of whether the target element would even be present</li>
+    </ul>
+    <div class="explanation">The fix wasn't a bigger abstraction (like eagerly initializing every user's Set on registration) — it was recognizing that getOrDefault(key, ImmutableFallback).mutate() is unsafe by construction, and switching to a null-checked Map.get() before mutating.</div>
+  </div>
+
+  <div class="question" id="q4">
+    <p>Q4. Why does <code>NotificationService</code> — not <code>SocialGraph</code> or
+    <code>LikeService</code> — hold the <code>UserRepository</code>/<code>TweetRepository</code>
+    references needed to build a readable message like "bob followed you"?</p>
+    <ul class="options" data-correct="1">
+      <li>A) Keeping ID-to-message resolution in the Observer means the Subjects stay completely ignorant of notifications — they publish raw Follow/Like facts and never import Notification, UserRepository, or TweetRepository at all</li>
+      <li>B) SocialGraph and LikeService are not allowed to depend on any repository</li>
+      <li>C) UserRepository and TweetRepository can only be instantiated once per application</li>
+      <li>D) It reduces the number of classes in the package</li>
+    </ul>
+    <div class="explanation">This is the entire point of Observer: the Subject knows a fact happened; only the Observer knows (and cares) what to do about it. If SocialGraph resolved usernames itself, it would need to know about notification message formatting — coupling a graph-mutation class to a presentation concern that has nothing to do with graph mutation.</div>
+  </div>
+
+</div>
+
+<!-- AI Engineering Extension -->
+<h2 class="ai">🤖 AI Engineering Extension</h2>
+
+<h3>Where AI fits</h3>
+<p>
+  <code>NotificationService</code> currently fires a notification for every single
+  <code>Follow</code>/<code>Like</code> event, unconditionally. At real scale (a user with
+  50,000 followers who all liked one viral tweet), that's 50,000 near-identical "X liked your
+  tweet" notifications landing at once — a UX and infrastructure problem, not a correctness
+  one. This is the natural seam for an AI-assisted <strong>notification ranking / batching</strong>
+  layer sitting between the Observer's raw event stream and what actually gets shown to a user.
+</p>
+
+<h3>Pattern</h3>
+<p>
+  Classification + ranking, not generation. A lightweight model (or even a rules-engine
+  standing in for one) scores each incoming <code>Notification</code> for predicted engagement
+  ("would this user open this?") and groups near-duplicate events ("bob and 47 others liked
+  your tweet") before they're surfaced — closer to a recommender-system re-ranking step than a
+  chatbot.
+</p>
+
+<h3>Architecture delta</h3>
+<p>
+  <code>NotificationService.store()</code> stays exactly as-is (it's still the source-of-truth
+  event log — never lossy). A new downstream consumer,
+  <code>NotificationRankingService</code>, reads from the same append-only log and produces a
+  separate, model-scored view for "what to actually push to the user's device right now." This
+  keeps the Observer's job (durable, complete history) cleanly separate from the ranking job
+  (best-effort, model-driven, allowed to be wrong or batch things).
+</p>
+
+<h3>Tradeoffs</h3>
+<p>
+  Latency: ranking adds a scoring step between "event happened" and "user sees it" — acceptable
+  for a notification (seconds of delay is fine) but would not be for the timeline path.
+  Accuracy vs. rule-based: a simple "batch if >5 similar events in 10 minutes" rule solves the
+  worst case cheaply; a model adds marginal engagement lift at real inference cost per event.
+  Cold start: a new user with no engagement history gives the model nothing to rank on — fall
+  back to chronological (today's actual behavior) until enough signal exists.
+</p>
+
+<h3>AWS / managed services</h3>
+<p>
+  Amazon Personalize (managed recommendation/ranking models) or a lightweight rules engine on
+  Lambda for the batching step; SQS between the Observer's event log and the ranking consumer
+  so a slow/failed ranking pass never blocks <code>NotificationService.store()</code> itself;
+  Bedrock only if notification <em>text</em> generation (not just ranking) is ever wanted —
+  overkill for this system as designed.
+</p>
+
+<div class="quiz">
+  <div class="question" id="ai-q1">
+    <p>AI-Q: Why should the ranking/batching layer read from <code>NotificationService</code>'s
+    existing log as a separate downstream consumer, rather than modifying
+    <code>NotificationService.store()</code> to rank notifications before storing them?</p>
+    <ul class="options" data-correct="2">
+      <li>A) Java doesn't allow two classes to read the same Map</li>
+      <li>B) Ranking is model-driven and best-effort — it can be wrong, slow, or temporarily unavailable without that being acceptable for the source-of-truth event log itself. Keeping them separate means a ranking outage never causes a lost or corrupted notification record</li>
+      <li>C) It reduces the total line count of NotificationService</li>
+      <li>D) AWS Personalize requires data to already be pre-sorted before ingestion</li>
+    </ul>
+    <div class="explanation">The same "keep the durable fact separate from the best-effort interpretation of it" principle that put ID resolution in the Observer rather than the Subject applies again one layer up: NotificationService's job is "record what happened, completely and correctly." Ranking's job is "guess what's worth surfacing right now." Mixing them means a model hiccup could corrupt or drop the historical record — never acceptable for an audit-style log.</div>
+  </div>
+</div>
+
+<footer>Lesson 03 · Twitter: Observer-Driven Notifications (Full Solution Walkthrough) · <a href="INDEX.md">← Index</a></footer>
+
+<script>
+  document.querySelectorAll('.question').forEach(q => {
+    const opts    = q.querySelectorAll('li');
+    const correct = parseInt(q.querySelector('.options').dataset.correct) - 1;
+    const expl    = q.querySelector('.explanation');
+    let answered  = false;
+    opts.forEach((li, i) => {
+      li.addEventListener('click', () => {
+        if (answered) return;
+        answered = true;
+        if (i === correct) { li.classList.add('correct'); }
+        else { li.classList.add('wrong'); opts[correct].classList.add('reveal'); }
+        expl.classList.add('visible');
+      });
+    });
+  });
+</script>
+</body>
+</html>
