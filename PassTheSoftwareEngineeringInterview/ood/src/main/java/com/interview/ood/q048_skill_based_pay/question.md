@@ -63,6 +63,16 @@ design uses **Strategy Pattern** (`ShiftPayCalculator`) for the pay-rate applica
 specifically so that requirement can be added later as a new implementation, without
 changing `PayrollService`, `Employee`, `Shift`, or the rate repository.
 
+That "no other changes needed" guarantee holds for a **per-shift** overtime threshold (e.g.
+hours beyond 8 within a single shift), since `ShiftPayCalculator.calculate()` only ever sees
+one shift at a time. A **weekly-cumulative** threshold (e.g. hours 41+ across all shifts an
+employee worked that week) is a different shape of requirement — it would need the
+calculator to know how many hours the employee has already worked so far that week, which
+this signature doesn't carry, so it would require widening the interface and touching
+`PayrollService`'s call site too. Worth being explicit about this distinction if asked in
+interview — the design doesn't assume which shape overtime will take, but the "zero changes"
+claim specifically covers the per-shift case.
+
 ---
 
 ## Folder layout

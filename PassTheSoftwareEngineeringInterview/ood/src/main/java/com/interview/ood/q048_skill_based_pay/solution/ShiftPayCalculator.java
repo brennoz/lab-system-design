@@ -8,6 +8,15 @@ import java.math.BigDecimal;
 // applying a second rate to the excess) and swaps it into PayrollService's constructor —
 // zero changes to PayrollService, Employee, Shift, or PayRateRepository.
 //
+// Scope of that "zero changes" guarantee: it holds for a PER-SHIFT overtime threshold (e.g.
+// hours beyond 8 within a single shift), since calculate() only ever sees one Shift at a
+// time. A WEEKLY-CUMULATIVE threshold (e.g. hours 41+ across all of an employee's shifts
+// that week) is a different shape of requirement — calculate() would need to know how many
+// hours this employee has already worked so far this week, which this signature doesn't
+// carry. That would mean widening this interface (e.g. passing a running total, or the full
+// shift list) and touching PayrollService's call site — worth saying explicitly rather than
+// letting the interface's simplicity imply a bigger promise than it can keep.
+//
 // Rejected alternative: Decorator (as used elsewhere in this project for stackable shopping
 // discounts). Decorator suits independent ADDITIVE charges layered on a fixed base. Overtime
 // isn't additive — it changes how the EXISTING hours are priced past a threshold within the

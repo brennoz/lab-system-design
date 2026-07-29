@@ -8,8 +8,10 @@ import java.util.List;
 // skill rate, delegates the actual pay-rate application to the injected ShiftPayCalculator
 // (Strategy), and assembles the per-shift breakdown + running total. PayrollService itself
 // never does hourly-rate arithmetic beyond the simple contract+skill addition — that keeps
-// the Phase-2 overtime swap (a new ShiftPayCalculator implementation) from requiring any
-// change here.
+// a PER-SHIFT Phase-2 overtime swap (a new ShiftPayCalculator implementation) from requiring
+// any change here. A WEEKLY-CUMULATIVE overtime threshold is a different shape of
+// requirement and would need this loop to change too — see ShiftPayCalculator's comment for
+// the full reasoning.
 public class PayrollService {
 
     private final PayRateRepository rates;
