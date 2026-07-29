@@ -50,8 +50,14 @@ public class SocialGraph {
     }
 
     public void unfollow(String followerId, String followeeId) {
-        following.getOrDefault(followerId, Set.of()).remove(followeeId);
-        followers.getOrDefault(followeeId, Set.of()).remove(followerId);
+        Set<String> followeeSet = following.get(followerId);
+        if (followeeSet != null) {
+            followeeSet.remove(followeeId);
+        }
+        Set<String> followerSet = followers.get(followeeId);
+        if (followerSet != null) {
+            followerSet.remove(followerId);
+        }
         // What NOT to do: don't notify observers here or try to retract a past notification.
         // Notifications are an append-only event log ("alice followed you" stays true as
         // history even after alice unfollows) — same reasoning as Follow/Like being explicit,
