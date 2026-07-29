@@ -31,6 +31,6 @@ public class TweetRepository {
     }
 
     public List<Tweet> findByAuthorId(String authorId) {
-        return byAuthor.getOrDefault(authorId, List.of());
+        return List.copyOf(byAuthor.getOrDefault(authorId, List.of()));
     }
 }
