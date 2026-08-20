@@ -48,10 +48,17 @@
 
 <h2>Production scale-up roadmap</h2>
 <p>
-  Ordered by consequence, not by the order the README happens to list them in. The most
-  damaging gap first is the one that blocks the application from being usable by more than
-  one trusted person at all; the least damaging is an open question rather than an invented
-  number.
+  Ordered by consequence, not by the order the README happens to list them in. Row 1 is most
+  damaging because it blocks the application from being usable by more than one trusted
+  person at all. Row 2 blocks a core delivered feature — CSV import — for any realistically
+  large file, not just at extreme scale. Row 3 ranks above row 4 deliberately: a
+  single-instance deployment is a hard availability failure mode — any one container crashing
+  takes the whole app down for every user, regardless of load — while row 4's search
+  limitation is a README-declared <em>intentional</em> scope decision that degrades gradually
+  as the catalogue grows, not a defect present today. An outright single point of failure
+  outranks a deliberately-scoped feature limitation. Row 5 is least damaging because it isn't
+  a confirmed problem at all — it's an open question, flagged honestly rather than papered
+  over with an invented number.
 </p>
 <table>
   <tr><th>Gap</th><th>What breaks without it</th><th>Fix (cross-reference)</th></tr>
@@ -79,6 +86,18 @@
     <td>See page 0011</td>
   </tr>
   <tr>
+    <td>Single-instance deployment</td>
+    <td>
+      The stack is three Docker Compose services — one backend container, one frontend
+      container, one MariaDB container — with no orchestrator, no horizontal scaling, and no
+      multi-AZ placement. Any one of the three containers failing is a full outage for every
+      user, and there is no read-replica or connection-pool headroom plan for concurrent load.
+    </td>
+    <td>Containerize for a real orchestrator (Kubernetes/ECS); add MariaDB read replicas
+      before reaching for a second datastore — no page in this guide covers this build-out,
+      it stays scoped to what the exercise actually shipped</td>
+  </tr>
+  <tr>
     <td>SQL <code>LIKE</code>-only search</td>
     <td>
       Case-insensitive substring search across seven columns is fine at ~1,000 rows but
@@ -91,33 +110,22 @@
     <td>See page 0010</td>
   </tr>
   <tr>
-    <td>Single-instance deployment</td>
-    <td>
-      The stack is a Docker Compose set — one backend container, one MariaDB container, no
-      orchestrator, no horizontal scaling, no multi-AZ placement. Either container failing is
-      a full outage, and there is no read-replica or connection-pool headroom plan for
-      concurrent load.
-    </td>
-    <td>Containerize for a real orchestrator (Kubernetes/ECS); add MariaDB read replicas
-      before reaching for a second datastore — no page in this guide covers this build-out,
-      it stays scoped to what the exercise actually shipped</td>
-  </tr>
-  <tr>
     <td>No rate limiting / connection-pool sizing not verified</td>
     <td>
-      <strong>Open question, not a finding.</strong> <code>application.yml</code> was
-      re-checked directly for this page: it configures <code>spring.datasource.url</code>,
-      credentials, JPA, Flyway, multipart limits, actuator exposure, and the logging pattern —
-      it does <strong>not</strong> set any <code>spring.datasource.hikari.*</code> property
-      (no <code>maximum-pool-size</code>, no <code>minimum-idle</code>). HikariCP's own
-      defaults apply unmodified. No rate limiting exists on any endpoint either. Rather than
-      invent a pool-size number that was never chosen, the honest statement is: this was never
-      an explicit decision in the solution, it is Spring Boot's out-of-the-box default, and it
-      would need to be sized deliberately before production load.
+      <strong>Open question, not a finding.</strong> No <code>spring.datasource.hikari.*</code>
+      property is set anywhere in <code>application.yml</code> — no <code>maximum-pool-size</code>,
+      no <code>minimum-idle</code> — so HikariCP's own defaults apply unmodified. No rate
+      limiting exists on any endpoint either. Rather than invent a pool-size number that was
+      never chosen, the honest statement is: this was never an explicit decision in the
+      solution, and it would need to be sized deliberately before production load.
     </td>
     <td>No cross-reference — not covered elsewhere in this guide</td>
   </tr>
 </table>
+<p>
+  (<code>application.yml</code> was re-checked directly against source for this row before
+  writing it — see the "Verified Facts" convention this whole guide follows.)
+</p>
 
 <h2>What Entire was supposed to capture</h2>
 <p>
@@ -226,6 +234,16 @@
   architectural: start the next session from the interactive Codex CLI, approve the hooks
   before the first commit, and verify with <code>entire doctor</code> before doing any real
   work.
+</p>
+
+<p>
+  That closes this study guide. Across twelve pages it followed one solution from its actual
+  architecture (page 0001) through domain model, CRUD, audit history, search, and CSV import,
+  into two deliberately counterfactual "what if" detours (OpenSearch, Kafka) that exist to
+  show where the real design choices would change, and finally back to what remains
+  unfinished and what the AI-collaboration record does and does not show. The throughline was
+  the same on every page: verify every claim against the actual source before writing it down,
+  including — especially — the parts that are not flattering.
 </p>
 
 <footer>Global Frame Inventory — study docs for the user's own take-home solution review.</footer>
