@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Global Frame Inventory — What If: OpenSearch for Search</title>
+<style>
+  :root{--ink:#1a1a1a;--muted:#555;--border:#ddd;--bg-code:#f7f7f5;--accent:#2563eb;--pass:#16a34a;--fail:#dc2626;--warn:#d97706;--bg:#fefefe;--sidebar:#f3f4f6;--reveal-bg:#fffbeb}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Georgia',serif;font-size:17px;line-height:1.7;color:var(--ink);background:var(--bg);max-width:900px;margin:0 auto;padding:3rem 2rem 6rem}
+  h1{font-size:2rem;line-height:1.2;margin-bottom:.4rem}
+  h2{font-size:1.35rem;margin:2.5rem 0 .75rem;border-bottom:1px solid var(--border);padding-bottom:.3rem}
+  h3{font-size:1.05rem;margin:1rem 0 .4rem;color:var(--ink)}
+  h4{font-size:.85rem;margin:.6rem 0 .2rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+  p{margin-bottom:.8rem}
+  code{font-family:monospace;background:var(--bg-code);padding:.1em .35em;border-radius:3px;font-size:.9em}
+  .meta{color:var(--muted);font-size:.85rem;font-family:monospace;margin-bottom:2rem}
+  .lesson-nav{font-size:.85rem;margin-bottom:3rem;color:var(--muted)}
+  .lesson-nav a{color:var(--accent);text-decoration:none}
+  .callout{border-left:4px solid var(--accent);background:var(--sidebar);padding:.9rem 1.2rem;margin:1.5rem 0;border-radius:0 6px 6px 0}
+  .callout.pass{border-color:var(--pass)}
+  .callout.warn{border-color:var(--warn)}
+  .callout strong{display:block;margin-bottom:.3rem;font-size:.88rem;font-family:monospace}
+  table{width:100%;border-collapse:collapse;margin:1.2rem 0;font-size:.9rem}
+  th,td{border:1px solid var(--border);padding:.5rem .7rem;text-align:left;vertical-align:top}
+  th{background:var(--sidebar);font-family:monospace;font-size:.78rem;text-transform:uppercase}
+  .snippet{border:1px solid var(--border);border-radius:8px;margin:1.2rem 0;overflow:hidden}
+  .snippet-label{background:var(--sidebar);border-bottom:1px solid var(--border);padding:.5rem 1rem;font-family:monospace;font-size:.78rem;color:var(--muted)}
+  .snippet pre{background:var(--bg-code);padding:1rem;overflow-x:auto;font-size:.85rem;line-height:1.5}
+  .snippet-explain{padding:.9rem 1.2rem;font-size:.95rem}
+  footer{margin-top:4rem;border-top:1px solid var(--border);padding-top:1.5rem;font-size:.82rem;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="lesson-nav"><a href="../">← Global Frame Inventory Study Guide</a></div>
+<h1>What If: OpenSearch for Search</h1>
+<div class="meta">Counterfactual · explicitly not what was built · see CLAUDE.md</div>
+
+<div class="callout warn">
+  <strong>This is not what was built</strong>
+  <p>OpenSearch and OpenSearch Dashboards were present in the original suggested
+  <code>docker-compose.yml</code> for this exercise, alongside MariaDB and MongoDB, and were
+  deliberately removed. The actual solution runs on MariaDB alone, with search implemented as a
+  JPA <code>Specification</code> over case-insensitive SQL <code>LIKE</code> — see the
+  <a href="0005-search.html">Search</a> page for the real implementation. Everything below is a
+  "what if scale, fuzzy matching, or geospatial discovery became material" exploration, in the
+  exact words of <code>docs/adr/0001-relational-persistence-and-sql-search.md</code>'s closing
+  line. Nothing on this page exists in the codebase.</p>
+</div>
+
+<h2>What would actually change in the code</h2>
+
+<p>The current search path is one call: <code>FrameQueryService.search()</code> hands a query
+string and three exact-match filters to <code>FrameSpecifications.matching()</code>, which
+builds a single JPA <code>Specification</code> and MariaDB does the rest in one round trip. The
+free-text branch of that specification OR's a case-insensitive <code>LIKE</code> across exactly
+seven fields — <code>frameId</code>, <code>siteNumber</code>, <code>station</code>,
+<code>address</code>, <code>town</code>, <code>postcode</code>, <code>format</code> (see
+<a href="0005-search.html">Search</a> for the full breakdown). Introducing OpenSearch means
+<code>FrameQueryService</code> would gain an OpenSearch client call for the free-text portion of
+a search — the <code>query</code> parameter, against those same seven fields re-indexed as an
+OpenSearch document — while the <code>status</code>/<code>environment</code>/<code>mediaType</code>
+exact-match filters have a real choice to make: stay as MariaDB predicates, or move into the
+OpenSearch query as term filters.</p>
+
+<table>
+  <tr><th>Option</th><th>Trade-off</th></tr>
+  <tr>
+    <td>OpenSearch does everything — text and the three exact-match filters, in one query DSL
+    request</td>
+    <td>One round trip, one result set, no merging logic. But every filter combination that
+    exists today in <code>FrameSpecifications</code> has to be re-implemented against
+    OpenSearch's query DSL (<code>term</code> filters, <code>bool</code> queries) instead of
+    Criteria API predicates — the filtering logic effectively lives twice, once conceptually and
+    once as two different query languages, and any future filter has to be added in the DSL, not
+    just the specification.</td>
+  </tr>
+  <tr>
+    <td>OpenSearch does only free text; MariaDB still applies
+    <code>status</code>/<code>environment</code>/<code>mediaType</code> and remains the source of
+    result data</td>
+    <td>Smaller blast radius — <code>FrameSpecifications</code>' exact-match predicates are
+    untouched, only the free-text branch of <code>matching()</code> is replaced by an OpenSearch
+    lookup that returns matching frame IDs, then MariaDB filters/paginates/fetches within that ID
+    set. But now there are two queries to combine (an ID-list intersection or an <code>IN</code>
+    clause), and pagination has to be coordinated across both instead of relying on a single
+    <code>Pageable</code>.</td>
+  </tr>
+</table>
+
+<p>Either way, this is additive to the existing relational model, not a replacement of it — ADR
+0001 is explicit that a search projection "can be added without replacing MariaDB as the source
+of truth."</p>
+
+<h2>Why NOT a naive dual-write</h2>
+
+<p>The obvious-looking approach is to write to MariaDB and then write to OpenSearch in the same
+request handler — inside the same <code>FrameCommandService</code> method that creates or
+updates a <code>Frame</code>. That's wrong, because the two writes are not atomic. They're two
+separate systems with two separate commit protocols, and nothing ties their success together:</p>
+
+<div class="snippet">
+  <div class="snippet-label">illustrative pseudocode — not from the codebase</div>
+  <pre><code>frameRepository.save(frame);        // MariaDB transaction commits here
+// --- process crashes / times out / OpenSearch is unreachable here ---
+openSearchClient.index(frame);      // never runs</code></pre>
+  <div class="snippet-explain">
+    <p>If the process dies, the pod is killed, or the OpenSearch call simply times out anywhere
+    after the MariaDB commit, the relational row exists but the search index entry never gets
+    created. Nothing detects this — there's no automatic reconciliation, no retry, no error
+    surfaced to a caller (the HTTP response for the original write may well have already returned
+    <code>200</code> before the second call even runs). MariaDB and the OpenSearch index now
+    silently disagree, and they stay disagreeing until something notices — a customer searching
+    for a frame that demonstrably exists but doesn't show up in results, discovered by accident
+    rather than by any system-level signal.</p>
+  </div>
+</div>
+
+<h2>The outbox-based alternative</h2>
+
+<p>This does not exist in the actual solution. It's a sketch of the pattern ADR 0001 names by
+name in its closing line: <em>"That projection should be populated through a transactional
+outbox rather than dual writes."</em></p>
+
+<ol>
+  <li>The same transaction that writes a <code>Frame</code> and its <code>FrameRevision</code>
+  today would also insert a row into a new <code>outbox_events</code> table — frame ID, event
+  type (e.g. <code>FRAME_CREATED</code>, <code>FRAME_UPDATED</code>), a payload, and a nullable
+  <code>processed_at</code> column. All three writes — <code>Frame</code>,
+  <code>FrameRevision</code>, <code>outbox_events</code> — commit atomically, because they're the
+  same database transaction against the same MariaDB instance. There is no window where one
+  exists and the others don't.</li>
+  <li>A separate poller/projector process — not part of the request path, running independently —
+  reads unprocessed <code>outbox_events</code> rows (<code>processed_at IS NULL</code>), indexes
+  each one into OpenSearch, and marks it processed once the index write succeeds.</li>
+  <li>If the projector crashes mid-batch, the unprocessed rows are simply retried on restart:
+  <code>processed_at</code> is still <code>NULL</code> for anything it didn't finish, so the next
+  run picks them up again. That gives at-least-once delivery into the search index — a row might
+  get indexed twice, which is safe because indexing is idempotent by frame ID, but it can never be
+  silently lost the way the dual-write's second step could be. MariaDB stays the single source of
+  truth throughout; OpenSearch is a derived, eventually-consistent projection of it, never
+  authoritative on its own.</li>
+</ol>
+
+<h2>When this would actually be justified</h2>
+
+<p>Nothing here is "OpenSearch is more sophisticated, therefore better" — that's not a
+justification the ADR makes, and it isn't one to invent. The concrete triggers, grounded in ADR
+0001's own language, are:</p>
+
+<ul>
+  <li><strong>Fuzzy / typo-tolerant matching.</strong> The current <code>LIKE '%query%'</code>
+  approach requires an exact substring — a misspelled station name or postcode simply won't
+  match. OpenSearch's text analysis (edit-distance fuzziness, tokenization, stemming) handles that
+  class of query natively; SQL <code>LIKE</code> cannot.</li>
+  <li><strong>Geospatial "frames near this point" queries.</strong> The domain model already
+  carries <code>longitude</code>/<code>latitude</code> as <code>BigDecimal</code> fields on every
+  frame (see <a href="0002-domain-model.html">Domain Model</a>) — but nothing today queries on
+  them; search is purely substring text. "Show frames within 500m of this location" is a
+  geo-distance query, a first-class OpenSearch query type with a dedicated geo-point index; doing
+  the equivalent in SQL means either a bounding-box approximation or reaching for a database
+  extension MariaDB doesn't ship with by default.</li>
+  <li><strong>A dataset size where the leading-wildcard scan becomes measurable.</strong> ADR 0001
+  is explicit that <code>LIKE '%query%'</code> "cannot fully use ordinary B-tree indexes and may
+  scan as data grows" — see the <a href="0005-search.html">Search</a> page's breakdown of why a
+  leading wildcard defeats a B-tree. At the ~1,000-row scale this solution targets, that full scan
+  costs nothing worth optimizing for. If the inventory grew by orders of magnitude and search
+  latency became measurable and user-visible, that's the point the trade-off actually flips —
+  not before.</li>
+</ul>
+
+<footer>Global Frame Inventory — study docs for the user's own take-home solution review.</footer>
+</body>
+</html>
