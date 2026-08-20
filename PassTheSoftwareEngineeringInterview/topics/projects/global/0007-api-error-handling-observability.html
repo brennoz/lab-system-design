@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Global Frame Inventory — API Contracts, Error Handling & Observability</title>
+<style>
+  :root{--ink:#1a1a1a;--muted:#555;--border:#ddd;--bg-code:#f7f7f5;--accent:#2563eb;--pass:#16a34a;--fail:#dc2626;--warn:#d97706;--bg:#fefefe;--sidebar:#f3f4f6;--reveal-bg:#fffbeb}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Georgia',serif;font-size:17px;line-height:1.7;color:var(--ink);background:var(--bg);max-width:900px;margin:0 auto;padding:3rem 2rem 6rem}
+  h1{font-size:2rem;line-height:1.2;margin-bottom:.4rem}
+  h2{font-size:1.35rem;margin:2.5rem 0 .75rem;border-bottom:1px solid var(--border);padding-bottom:.3rem}
+  h3{font-size:1.05rem;margin:1rem 0 .4rem;color:var(--ink)}
+  h4{font-size:.85rem;margin:.6rem 0 .2rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+  p{margin-bottom:.8rem}
+  code{font-family:monospace;background:var(--bg-code);padding:.1em .35em;border-radius:3px;font-size:.9em}
+  .meta{color:var(--muted);font-size:.85rem;font-family:monospace;margin-bottom:2rem}
+  .lesson-nav{font-size:.85rem;margin-bottom:3rem;color:var(--muted)}
+  .lesson-nav a{color:var(--accent);text-decoration:none}
+  .callout{border-left:4px solid var(--accent);background:var(--sidebar);padding:.9rem 1.2rem;margin:1.5rem 0;border-radius:0 6px 6px 0}
+  .callout.pass{border-color:var(--pass)}
+  .callout.warn{border-color:var(--warn)}
+  .callout strong{display:block;margin-bottom:.3rem;font-size:.88rem;font-family:monospace}
+  table{width:100%;border-collapse:collapse;margin:1.2rem 0;font-size:.9rem}
+  th,td{border:1px solid var(--border);padding:.5rem .7rem;text-align:left;vertical-align:top}
+  th{background:var(--sidebar);font-family:monospace;font-size:.78rem;text-transform:uppercase}
+  .snippet{border:1px solid var(--border);border-radius:8px;margin:1.2rem 0;overflow:hidden}
+  .snippet-label{background:var(--sidebar);border-bottom:1px solid var(--border);padding:.5rem 1rem;font-family:monospace;font-size:.78rem;color:var(--muted)}
+  .snippet pre{background:var(--bg-code);padding:1rem;overflow-x:auto;font-size:.85rem;line-height:1.5}
+  .snippet-explain{padding:.9rem 1.2rem;font-size:.95rem}
+  footer{margin-top:4rem;border-top:1px solid var(--border);padding-top:1.5rem;font-size:.82rem;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="lesson-nav"><a href="../">← Global Frame Inventory Study Guide</a></div>
+<h1>API Contracts, Error Handling & Observability</h1>
+<div class="meta">RFC 9457 ProblemDetail · request correlation · readiness · container hardening</div>
+
+<p>
+  The Frame CRUD page introduced <code>Frame.version</code> and
+  <code>StaleFrameVersionException</code>, and deferred one question: how does a plain
+  <code>RuntimeException</code> subclass with no HTTP annotations actually turn into a
+  <code>409 Conflict</code> on the wire? The answer is a single class,
+  <code>ApiExceptionHandler</code>, which every controller in the app shares.
+</p>
+
+<h2>ProblemDetail, not ad-hoc error JSON</h2>
+<p>
+  RFC 9457 ("Problem Details for HTTP APIs") standardizes one JSON shape for error responses:
+  <code>type</code> (a URI identifying the problem category), <code>title</code> (a short
+  human-readable summary), <code>status</code> (the HTTP status code, repeated in the body),
+  <code>detail</code> (specifics for this occurrence), and <code>instance</code> (optionally,
+  which request triggered it). Spring's <code>ProblemDetail</code> class is a typed builder for
+  exactly that shape. The alternative — each controller method catching its own exceptions and
+  hand-rolling a JSON error map — means every endpoint can drift to a slightly different field
+  name or status convention. A single <code>@RestControllerAdvice</code> class instead maps
+  every exception type the app throws to a consistent problem body once, and every controller
+  gets it for free without importing anything.
+</p>
+<div class="snippet">
+  <div class="snippet-label">src/backend/src/main/java/com/global/ct/frameinventory/web/ApiExceptionHandler.java:27-67</div>
+  <pre><code>    @ExceptionHandler(FrameNotFoundException.class)
+    ProblemDetail handleNotFound(FrameNotFoundException exception) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, exception.getMessage());
+        problem.setTitle("Frame not found");
+        problem.setType(URI.create("urn:problem:frame-not-found"));
+        return problem;
+    }
+
+    @ExceptionHandler(DuplicateFrameException.class)
+    ProblemDetail handleDuplicate(DuplicateFrameException exception) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
+        problem.setTitle("Frame already exists");
+        problem.setType(URI.create("urn:problem:duplicate-frame"));
+        return problem;
+    }
+
+    @ExceptionHandler({StaleFrameVersionException.class, ObjectOptimisticLockingFailureException.class})
+    ProblemDetail handleStaleVersion(RuntimeException exception) {
+        String detail = exception instanceof StaleFrameVersionException
+            ? exception.getMessage()
+            : "The frame was modified by another request; reload it and try again";
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, detail);
+        problem.setTitle("Frame was modified");
+        problem.setType(URI.create("urn:problem:stale-frame-version"));
+        return problem;
+    }
+
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    ProblemDetail handleInvalidFrame(MethodArgumentNotValidException exception) {
+        Map&lt;String, String&gt; errors = new LinkedHashMap&lt;&gt;();
+        exception.getBindingResult().getFieldErrors().forEach(error ->
+            errors.putIfAbsent(error.getField(), error.getDefaultMessage())
+        );
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+            HttpStatus.BAD_REQUEST, "One or more frame fields are invalid"
+        );
+        problem.setTitle("Invalid frame");
+        problem.setType(URI.create("urn:problem:invalid-frame"));
+        problem.setProperty("errors", errors);
+        return problem;
+    }</code></pre>
+  <div class="snippet-explain">
+    <p>
+      This confirms the page 0003 deferral directly: <code>StaleFrameVersionException</code> is
+      caught by <code>handleStaleVersion</code> alongside Spring Data's own
+      <code>ObjectOptimisticLockingFailureException</code> (the exception JPA throws natively
+      when an <code>@Version</code> mismatch is detected at flush time — the app's own exception
+      is thrown from a narrower, more deliberate check earlier in
+      <code>FrameCommandService</code>, but both paths converge on the same handler and the same
+      status). Both become <code>409 Conflict</code>. Note that <code>DuplicateFrameException</code>
+      is <em>also</em> 409, not 400 — Spring Data-flavoured REST conventions treat "this ID
+      already exists" as a conflict with existing state, not a malformed request. Validation
+      failures (<code>MethodArgumentNotValidException</code>, thrown by
+      <code>@Valid</code> on the request body) become <code>400 Bad Request</code> with a
+      <code>errors</code> property mapping each invalid field to its message — a shape the
+      frontend can render directly next to each form field without string-parsing a generic
+      <code>detail</code> message.
+    </p>
+  </div>
+</div>
+
+<p>The handler covers more exception types than fit in one snippet. The full, verified mapping:</p>
+<table>
+  <tr><th>Exception</th><th>Status</th><th>Problem title</th></tr>
+  <tr><td><code>FrameNotFoundException</code></td><td>404 Not Found</td><td>Frame not found</td></tr>
+  <tr><td><code>DuplicateFrameException</code></td><td>409 Conflict</td><td>Frame already exists</td></tr>
+  <tr><td><code>StaleFrameVersionException</code>,<br><code>ObjectOptimisticLockingFailureException</code></td><td>409 Conflict</td><td>Frame was modified</td></tr>
+  <tr><td><code>MethodArgumentNotValidException</code></td><td>400 Bad Request</td><td>Invalid frame</td></tr>
+  <tr><td><code>HttpMessageNotReadableException</code></td><td>400 Bad Request</td><td>Invalid frame</td></tr>
+  <tr><td><code>InvalidCsvException</code></td><td>400 Bad Request</td><td>Invalid CSV</td></tr>
+  <tr><td><code>MaxUploadSizeExceededException</code></td><td>413 Payload Too Large</td><td>CSV file is too large</td></tr>
+  <tr><td><code>ConstraintViolationException</code>,<br><code>HandlerMethodValidationException</code></td><td>400 Bad Request</td><td>Invalid request parameters</td></tr>
+  <tr><td><code>MethodArgumentTypeMismatchException</code></td><td>400 Bad Request</td><td>Invalid request parameter</td></tr>
+</table>
+<div class="callout pass">
+  <strong>page 0003 deferral, resolved</strong>
+  <code>StaleFrameVersionException</code> → <code>409 Conflict</code> via a
+  <code>@ExceptionHandler</code> method returning a <code>ProblemDetail</code>, exactly the
+  third option that page left open rather than guessed.
+</div>
+
+<h2>Request correlation</h2>
+<p>
+  Every request gets a request ID: the caller's own <code>X-Request-ID</code> header if it's
+  present and matches a safe pattern, otherwise a freshly generated UUID. Either way the ID goes
+  onto the response header and into SLF4J's MDC (Mapped Diagnostic Context) so every log line
+  the request produces — anywhere in the call stack, not just in this filter — carries it
+  automatically via the logging pattern's <code>%X{requestId}</code>.
+</p>
+<div class="snippet">
+  <div class="snippet-label">src/backend/src/main/java/com/global/ct/frameinventory/observability/filter/RequestObservabilityFilter.java:24-56</div>
+  <pre><code>    @Override
+    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
+                                    FilterChain filterChain) throws ServletException, IOException {
+        String requestId = requestId(request.getHeader(REQUEST_ID_HEADER));
+        response.setHeader(REQUEST_ID_HEADER, requestId);
+        MDC.put(REQUEST_ID_MDC_KEY, requestId);
+        long startedAt = System.nanoTime();
+
+        try {
+            filterChain.doFilter(request, response);
+        } finally {
+            long durationMillis = (System.nanoTime() - startedAt) / 1_000_000;
+            logRequest(request, response, durationMillis);
+            MDC.remove(REQUEST_ID_MDC_KEY);
+        }
+    }
+
+    private String requestId(String suppliedRequestId) {
+        if (suppliedRequestId != null && SAFE_REQUEST_ID.matcher(suppliedRequestId).matches()) {
+            return suppliedRequestId;
+        }
+        return UUID.randomUUID().toString();
+    }
+
+    private void logRequest(HttpServletRequest request, HttpServletResponse response, long durationMillis) {
+        if (request.getRequestURI().startsWith("/actuator/health")) {
+            LOGGER.debug("HTTP request method={} path={} status={} durationMs={}",
+                request.getMethod(), request.getRequestURI(), response.getStatus(), durationMillis);
+            return;
+        }
+        LOGGER.info("HTTP request method={} path={} status={} durationMs={}",
+            request.getMethod(), request.getRequestURI(), response.getStatus(), durationMillis);
+    }
+}</code></pre>
+  <div class="snippet-explain">
+    <p>
+      Confirmed directly from the code, not just the README: a client-supplied ID is only
+      trusted if it matches <code>SAFE_REQUEST_ID</code> (letters, digits, <code>.</code>,
+      <code>_</code>, <code>-</code>, 1–64 chars) — an attacker can't inject a newline or a
+      log-forging payload through this header and have it echoed straight into the log line.
+      Every log line records <code>method</code>, <code>path</code> (via
+      <code>getRequestURI()</code> — the path only, no query string), <code>status</code>, and
+      <code>durationMs</code>; the request ID itself isn't in the log message text because it's
+      already in the MDC and therefore already in every line's prefix (the
+      <code>application.yml</code> logging pattern is
+      <code>"%5p [requestId=%X{requestId:-}]"</code>). What's deliberately absent: request or
+      response bodies, and query parameter values — <code>logRequest</code> never touches either.
+      Health-check traffic under <code>/actuator/health</code> logs at <code>DEBUG</code>
+      instead of <code>INFO</code>, so a 10-second polling interval from Compose's healthcheck
+      doesn't flood production logs at normal levels.
+    </p>
+  </div>
+</div>
+
+<h2>Readiness vs. liveness</h2>
+<p>
+  Liveness answers one question: is the process alive and its main loop still responding — not
+  deadlocked, not stuck? Readiness answers a different, stricter question: can this specific
+  instance actually serve a real request right now, including everything it depends on? A JVM
+  can be perfectly alive while its database connection pool is exhausted or MariaDB itself is
+  still starting — liveness would say "fine," readiness should say "not yet."
+</p>
+<div class="snippet">
+  <div class="snippet-label">src/backend/src/main/java/com/global/ct/frameinventory/health/controller/HealthController.java:11-24</div>
+  <pre><code>@RestController
+@RequestMapping("/api")
+@CrossOrigin(origins = "*")
+public class HealthController {
+
+    @GetMapping("/health")
+    public Map&lt;String, Object&gt; health() {
+        return Map.of(
+            "status", "UP",
+            "service", "frame-inventory-backend",
+            "timestamp", Instant.now().toString()
+        );
+    }
+}</code></pre>
+  <div class="snippet-explain">
+    <p>
+      This is <em>not</em> the readiness probe — it's a separate, deliberately CORS-open
+      (<code>@CrossOrigin(origins = "*")</code>) endpoint at <code>/api/health</code>, distinct
+      from the Actuator's <code>/actuator/...</code> namespace, sized for a browser client to
+      poll and confirm basic connectivity. It answers "is the backend reachable at all," with no
+      dependency check — closer to a liveness signal than a readiness one, and it never claims to
+      be more than that.
+    </p>
+  </div>
+</div>
+<div class="snippet">
+  <div class="snippet-label">src/backend/src/main/resources/application.yml:25-36</div>
+  <pre><code>management:
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      group:
+        readiness:
+          include: readinessState,db
+  endpoints:
+    web:
+      exposure:
+        include: health,info</code></pre>
+  <div class="snippet-explain">
+    <p>
+      The actual readiness probe, <code>/actuator/health/readiness</code>, comes from Spring
+      Boot Actuator, not from application code — this configuration is what makes it real.
+      <code>probes.enabled: true</code> turns on the Kubernetes-style
+      <code>/actuator/health/liveness</code> and <code>/actuator/health/readiness</code> groups;
+      the readiness group is then explicitly widened past the bare
+      <code>readinessState</code> availability flag to also <code>include: ... db</code> — a
+      live connection check against MariaDB via the configured <code>DataSource</code>. That's
+      why the Compose healthcheck shown on the Architecture Overview page
+      (<a href="0001-architecture-overview.html">page 0001</a>) targets
+      <code>/actuator/health/readiness</code> specifically rather than
+      <code>/actuator/health</code> or a liveness endpoint: it needs the frontend to wait not
+      just for the JVM to boot, but for the backend to actually be able to talk to the database
+      before Compose reports it healthy and lets dependent services start.
+      <code>endpoints.web.exposure.include: health,info</code> is its own small hardening
+      choice — only those two Actuator endpoints are exposed over HTTP at all, not the full
+      default set (env, beans, mappings, etc.) that would leak internal configuration detail.
+    </p>
+  </div>
+</div>
+
+<h2>Container hardening</h2>
+<p>
+  Neither safeguard here claims production-grade container security — this is a local demo
+  stack — but both are real, deliberate choices rather than defaults left untouched.
+</p>
+<div class="snippet">
+  <div class="snippet-label">src/backend/Dockerfile:8-15</div>
+  <pre><code>FROM eclipse-temurin:21-jre
+WORKDIR /app
+RUN groupadd --system app \
+    && useradd --system --gid app --home-dir /app --shell /usr/sbin/nologin app
+COPY --from=build --chown=app:app /workspace/build/libs/*.jar app.jar
+USER app
+EXPOSE 8080
+ENTRYPOINT ["java", "-jar", "/app/app.jar"]</code></pre>
+  <div class="snippet-explain">
+    <p>
+      This is the second stage of a multi-stage build — the first stage (<code>eclipse-temurin:21-jdk</code>,
+      not shown here) compiles the jar with Gradle and never ships; the runtime image starts
+      from the smaller JRE-only base and copies in just the built artifact. On top of that, a
+      dedicated system group and user (<code>app</code>, no login shell) is created explicitly
+      so the process does not run as the image's default <code>root</code>. The jar is
+      <code>chown</code>'d to <code>app:app</code> at copy time and <code>USER app</code> switches
+      the effective user before <code>ENTRYPOINT</code> runs — so a container escape or a
+      dependency RCE inside the JVM doesn't hand an attacker root inside the container. Paired
+      with the MariaDB port binding already shown on
+      <a href="0001-architecture-overview.html">page 0001</a>
+      (<code>127.0.0.1:3306:3306</code>, loopback-only rather than bound to all interfaces), the
+      pattern across this stack is consistent: small, concrete safeguards sized to a local
+      demo, not a claim of hardened production posture.
+    </p>
+  </div>
+</div>
+
+<footer>Global Frame Inventory — study docs for the user's own take-home solution review.</footer>
+</body>
+</html>
