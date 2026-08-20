@@ -68,9 +68,12 @@
   <li><code>POST /api/frames/import</code> would, in one transaction, write an
   <code>import_job</code> row (<code>status=PENDING</code>, filename, row count) and an outbox
   event — then return <code>202 Accepted</code> with the job ID immediately, instead of the
-  current design's behaviour of holding the request open for the whole file (see
-  <a href="0006-csv-import.html">CSV Import</a>: "Request duration grows with row count and the
-  client must remain connected" is exactly the constraint this removes).</li>
+  current design's behaviour of holding the request open for the whole file. ADR 0002 names
+  that current behaviour directly in its Consequences: "Request duration grows with row count
+  and the client must remain connected" — that's exactly the constraint this design removes. The
+  synchronous, whole-request nature of today's import is covered on the
+  <a href="0006-csv-import.html">CSV Import</a> page, though the request-duration consequence
+  itself is ADR 0002's framing, not that page's.</li>
   <li>A consumer would pick up the outbox event, read the stored file, and process rows in bounded
   batches — reusing the exact same per-row <code>REQUIRES_NEW</code> upsert logic already covered
   on the <a href="0003-frame-crud-optimistic-concurrency.html">Frame CRUD &amp; Optimistic
