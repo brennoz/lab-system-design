@@ -203,6 +203,12 @@ public PageResponse&lt;FrameResponse&gt; search(
     Sort.Order.asc("frameId")
 );
 
+private final FrameRepository repository;
+
+public FrameQueryService(FrameRepository repository) {
+    this.repository = repository;
+}
+
 @Transactional(readOnly = true)
 public PageResponse&lt;FrameResponse&gt; search(String query, FrameStatus status, FrameEnvironment environment,
                                           MediaType mediaType, int page, int size) {
