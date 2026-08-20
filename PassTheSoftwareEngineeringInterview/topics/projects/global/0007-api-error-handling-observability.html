@@ -136,8 +136,9 @@
 <div class="callout pass">
   <strong>page 0003 deferral, resolved</strong>
   <code>StaleFrameVersionException</code> → <code>409 Conflict</code> via a
-  <code>@ExceptionHandler</code> method returning a <code>ProblemDetail</code>, exactly the
-  third option that page left open rather than guessed.
+  <code>@ExceptionHandler</code> method returning a <code>ProblemDetail</code> — the first two
+  of that page's three left-open possibilities combined, not the vague third "something else"
+  catch-all.
 </div>
 
 <h2>Request correlation</h2>
@@ -182,8 +183,7 @@
         }
         LOGGER.info("HTTP request method={} path={} status={} durationMs={}",
             request.getMethod(), request.getRequestURI(), response.getStatus(), durationMillis);
-    }
-}</code></pre>
+    }</code></pre>
   <div class="snippet-explain">
     <p>
       Confirmed directly from the code, not just the README: a client-supplied ID is only
