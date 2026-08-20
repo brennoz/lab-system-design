@@ -240,9 +240,17 @@ public class StaleFrameVersionException extends RuntimeException {
 <p>
   Both clients below have already read the frame independently and both hold
   <code>version=3</code>. Both send a <code>PUT</code> with that version at roughly the same
-  time. The backend still processes writes one at a time — <code>@Transactional</code> commits
-  are serialized at the row level by the database — so one request's transaction always commits
-  before the other's version check runs against the now-current row.
+  time. Spring handles requests concurrently on separate threads — nothing at the backend level
+  queues one request behind the other. The diagram below shows one possible interleaving:
+  Client A's request runs fully to commit, including its <code>UPDATE ... WHERE version = ?</code>,
+  before Client B's explicit version check (Layer 1, above) even runs — so Layer 1 alone is
+  enough to catch the conflict here. It is row-level locking at commit time in the database,
+  not backend request ordering, that ultimately serializes the two competing <code>UPDATE</code>
+  statements. A tighter interleaving is also possible: if both requests' Layer-1 checks read
+  <code>version=3</code> before either transaction commits, Layer 1 would let both through, and
+  it would be Layer 2 — the <code>flush()</code> / <code>ObjectOptimisticLockingFailureException</code>
+  catch — that catches the loser instead. The diagram shows the Layer-1-catches-it case only;
+  it does not depict that tighter race.
 </p>
 <div class="diagram-wrap">
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 470" font-family="Menlo,Consolas,monospace" font-size="12">
