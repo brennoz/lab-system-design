@@ -54,7 +54,8 @@
 ├── utils/          inventoryNavigation.ts (safe "back to filtered list" return path)
 ├── App.tsx         route table, wraps every page in AppShell
 ├── App.css         component styles (tables, forms, banners, nav rail)
-└── index.css       CSS custom properties + @font-face, global reset
+├── index.css       CSS custom properties + @font-face, global reset
+└── main.tsx        entry point — mounts App inside StrictMode + BrowserRouter
 </div>
 
 <table>
@@ -166,7 +167,7 @@
 
         &lt;section className="results-panel" aria-live="polite"&gt;</code></pre>
   <div class="snippet-explain">
-    <p>Compare this to <code>DirA_Search</code>'s two-column grid: a fixed-width <code>&lt;aside className="filters"&gt;</code> holding checkbox groups for region/site type/status/tech, next to a results <code>&lt;section&gt;</code> containing the dense <code>&lt;table className="tbl"&gt;</code>. <code>FrameInventoryPage</code> keeps the same shape — a narrower filter column (status/environment/media type instead of Direction A's region/site/tech, matching this domain's actual fields) beside a wider results column whose <code>inventory-table</code> further down the file mirrors Direction A's dense row layout (ID cell, site/location stack cells, status chip, trailing open-row action). The routing layer matches too: <code>App.tsx</code>'s five <code>/frames/...</code> routes (list, new, import, <code>:frameId</code> detail, <code>:frameId/edit</code>, <code>:frameId/history</code>) are the same "list → detail → edit / history sub-pages" shape as Direction A's <code>screen</code> state machine (<code>search</code> → <code>detail</code> → <code>edit</code> / <code>history</code>), just expressed as real routes instead of client-side view-swapping. So the influence is real and structural — a layout blueprint that was followed — even though it was reimplemented from scratch in TSX/CSS rather than imported as a file.</p>
+    <p>Compare this to <code>DirA_Search</code>'s two-column grid: a fixed-width <code>&lt;aside className="filters"&gt;</code> holding checkbox groups for region/site type/status/tech, next to a results <code>&lt;section&gt;</code> containing the dense <code>&lt;table className="tbl"&gt;</code>. <code>FrameInventoryPage</code> keeps the same shape — a narrower filter column (status/environment/media type instead of Direction A's region/site/tech, matching this domain's actual fields) beside a wider results column whose <code>inventory-table</code> further down the file mirrors Direction A's dense row layout (ID cell, site/location stack cells, status chip, trailing open-row action). The routing layer matches too: <code>App.tsx</code>'s six <code>/frames/...</code> routes (list, new, import, <code>:frameId</code> detail, <code>:frameId/edit</code>, <code>:frameId/history</code>) are the same "list → detail → edit / history sub-pages" shape as Direction A's <code>screen</code> state machine (<code>search</code> → <code>detail</code> → <code>edit</code> / <code>history</code>), just expressed as real routes instead of client-side view-swapping. So the influence is real and structural — a layout blueprint that was followed — even though it was reimplemented from scratch in TSX/CSS rather than imported as a file.</p>
   </div>
 </div>
 
