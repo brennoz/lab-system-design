@@ -107,7 +107,7 @@
 
 <div class="snippet">
   <div class="snippet-label">src/backend/src/main/java/com/global/ct/frameinventory/frame/service/FrameImportService.java:141-155</div>
-  <pre><code>    private void importRecord(CSVRecord record, ImportCounts counts, List<FrameImportErrorResponse> errors) {
+  <pre><code>    private void importRecord(CSVRecord record, ImportCounts counts, List&lt;FrameImportErrorResponse&gt; errors) {
         long rowNumber = record.getRecordNumber() + 1;
         String frameId = frameId(record);
         try {
