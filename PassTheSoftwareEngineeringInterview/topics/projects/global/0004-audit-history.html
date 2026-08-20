@@ -88,8 +88,8 @@
       neighbours. That is nineteen near-identical blocks differing only in which accessor they
       call and which field name string they attach to the result, which is exactly the shape of
       duplication that hides a bug: get one field's accessor wrong in one of the nineteen copies
-      and nothing catches it, because each block is independently "correct" C++-style
-      boilerplate that nobody re-reads carefully after the first three.
+      and nothing catches it, because each block is independently "correct" boilerplate
+      that nobody re-reads carefully after the first three.
     </p>
     <p>
       The private <code>compare()</code> helper collapses all nineteen into one generic method
