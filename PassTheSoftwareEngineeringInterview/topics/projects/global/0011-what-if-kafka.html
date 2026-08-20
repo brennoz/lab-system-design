@@ -91,6 +91,31 @@
   client having to re-upload and restart the whole file from row one.</li>
 </ol>
 
+<p>Step 1's transaction, sketched out, is the same shape as the outbox write on the
+<a href="0010-what-if-opensearch.html">OpenSearch page</a> — one more row alongside the domain
+write, committed atomically because it's the same database transaction:</p>
+
+<div class="snippet">
+  <div class="snippet-label">illustrative pseudocode — not from the codebase</div>
+  <pre><code>@Transactional
+public ImportJobResponse startImport(MultipartFile file) {
+    ImportJob job = ImportJob.pending(file.getOriginalFilename(), countRows(file));
+    importJobRepository.save(job);                                   // import_job row
+    outboxRepository.save(OutboxEvent.of(job, "IMPORT_JOB_CREATED", storeFile(file)));
+    return ImportJobResponse.accepted(job.getId());                  // both rows committed together
+}                                                                     // controller returns 202</code></pre>
+  <div class="snippet-explain">
+    <p>
+      <code>import_job</code> and <code>outbox_events</code> commit or roll back together because
+      they're the same transaction against the same MariaDB instance — there is no window where a
+      job record exists without a corresponding outbox event, or vice versa. The controller
+      returns <code>202 Accepted</code> as soon as this method returns, not after the file has
+      actually been processed; the consumer described in step 2 above does that part later, out of
+      band, reading the outbox row this method wrote.
+    </p>
+  </div>
+</div>
+
 <p>
   The honest trade-off, named directly rather than glossed over: this adds a job-state table, a
   consumer process, and a polling or WebSocket UX for progress — real, ongoing operational
