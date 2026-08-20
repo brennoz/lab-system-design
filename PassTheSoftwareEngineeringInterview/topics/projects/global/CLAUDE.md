@@ -24,10 +24,12 @@ Ground-truth rules derived from reading actual source code in the user's solutio
 ## Verified Facts
 
 - **Datastore: MariaDB only.** The original suggested `docker-compose.yml` offered MongoDB,
-  MariaDB, and OpenSearch + Dashboards as options. The solution kept MariaDB only and removed
-  MongoDB, OpenSearch, OpenSearch Dashboards, Kafka, and Redis entirely. There is no Kafka or
-  Redis anywhere in the actual build — any mention of them in pages 0010/0011 is explicitly a
-  counterfactual ("what if"), not a description of what was built.
+  MariaDB, and OpenSearch + Dashboards as options. The solution kept MariaDB only. MongoDB,
+  OpenSearch, and OpenSearch Dashboards were present in the original suggested stack and were
+  removed. Kafka and Redis were never part of the original stack at all — they don't appear
+  anywhere in it. There is no Kafka or Redis anywhere in the actual build — any mention of them
+  in pages 0010/0011 is explicitly a counterfactual ("what if"), not a description of what was
+  built.
 - **Frame IDs are immutable.** `Frame.frameId` is `@Column(..., updatable = false)`. Create
   rejects a duplicate ID (`DuplicateFrameException`); update never changes it.
 - **Optimistic locking via JPA `@Version`** (a `long` column named `version`). Clients must
@@ -62,6 +64,8 @@ Ground-truth rules derived from reading actual source code in the user's solutio
   safeguards and frontend forms. No browser-automation suite — out of scope for the one-day
   timebox (this is stated directly in the README's "Current limitations" section).
 
+---
+
 ## Document Rules
 
 ### Snippet accuracy
@@ -71,8 +75,10 @@ before writing a snippet and use its real current line numbers in the label.
 
 ### No Kafka/OpenSearch/Redis claims outside pages 0010-0011
 Pages 0001-0009 and 0012 describe what was actually built. Do not describe OpenSearch, Kafka,
-Redis, or MongoDB as being used anywhere in those pages — they were removed. Pages 0010 and
-0011 are explicitly counterfactual and should be clearly framed as "if we had chosen X instead."
+Redis, or MongoDB as being used anywhere in those pages. MongoDB and OpenSearch were present in
+the original suggested stack and were removed; Kafka and Redis were never present in the
+original stack at all. Pages 0010 and 0011 are explicitly counterfactual and should be clearly
+framed as "if we had chosen X instead."
 
 ### Actor strings
 Always write the literal strings `demo-user` and `csv-import` (in code font) when referring to
