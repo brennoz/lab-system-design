@@ -111,7 +111,62 @@
   --shadow: 0 2px 4px -1px rgb(0 34 63 / 15%), 0 1px 2px -1px rgb(0 34 63 / 10%);
 }</code></pre>
   <div class="snippet-explain">
-    <p>This is the frontend's entire design-system footprint: one hand-maintained token block. Every color, radius, and shadow used across <code>App.css</code> and the page components resolves back to a <code>var(--...)</code> defined here, and the hex values line up with <code>design-system/tokens.css</code>'s primary/neutral scale — but there is no shared file, so a palette change in the design system would need to be copied over by hand rather than picked up automatically.</p>
+    <p>This is the frontend's entire design-system footprint at the token/import level: one hand-maintained token block. Every color, radius, and shadow used across <code>App.css</code> and the page components resolves back to a <code>var(--...)</code> defined here, and the hex values line up with <code>design-system/tokens.css</code>'s primary/neutral scale — but there is no shared file, so a palette change in the design system would need to be copied over by hand rather than picked up automatically.</p>
+  </div>
+</div>
+
+<p>That "no import" finding is only half the story, though. The implementation journal is explicit that the app followed one of the design system's two named layout directions:</p>
+<div class="callout">
+  <strong>docs/implementation-journal.md:44</strong>
+  <p>"The React application follows the supplied Direction A design and separates API clients, typed models, hooks, reusable components, layout, and pages."</p>
+</div>
+<p><code>design-system/direction-a.jsx</code> defines that layout under the heading <code>Direction A — "Workspace"</code>, describing itself in a comment as "Classic dense table + filter sidebar; sub-pages for detail / edit / history." Its <code>DirA</code> root component renders a persistent <code>Brand</code> + <code>Topbar</code> (with breadcrumbs) + <code>Rail</code> shell around a swappable <code>body</code>, and its <code>DirA_Search</code> screen lays out a 264px filter <code>&lt;aside&gt;</code> next to a dense results <code>&lt;table&gt;</code>. This is not a coincidence of naming — it is the same structural skeleton the frontend actually built, even though no <code>direction-a.jsx</code> code is imported. <code>AppShell.tsx</code> reimplements the same brand bar / breadcrumb topbar / collapsible rail nav frame in its own JSX and CSS:</p>
+<div class="snippet">
+  <div class="snippet-label">src/frontend/src/components/layout/AppShell.tsx:47-67</div>
+  <pre><code>      &lt;header className="top-bar"&gt;
+        &lt;div className="breadcrumbs" aria-label="Breadcrumb"&gt;
+          &lt;span&gt;Inventory&lt;/span&gt;&lt;span&gt;/&lt;/span&gt;
+          &lt;Link to={framesPath}&gt;Frames&lt;/Link&gt;
+          {isDetail &amp;&amp; &lt;&gt;&lt;span&gt;/&lt;/span&gt;&lt;strong&gt;{pageLabel}&lt;/strong&gt;&lt;/&gt;}
+        &lt;/div&gt;
+        &lt;div className="user-summary" aria-label="Current user"&gt;
+          &lt;span className="avatar"&gt;DU&lt;/span&gt;
+          &lt;span&gt;&lt;strong&gt;Demo user&lt;/strong&gt;&lt;small&gt;Inventory operations&lt;/small&gt;&lt;/span&gt;
+        &lt;/div&gt;
+      &lt;/header&gt;
+
+      &lt;aside className={`navigation-rail ${menuOpen ? 'open' : ''}`} aria-label="Primary navigation"&gt;
+        &lt;p className="nav-label"&gt;Inventory&lt;/p&gt;
+        &lt;NavLink to="/frames" onClick={() =&gt; setMenuOpen(false)}&gt;&lt;Frame /&gt; Frames&lt;/NavLink&gt;
+        &lt;p className="nav-label"&gt;Workspace&lt;/p&gt;
+        &lt;span className="nav-disabled"&gt;&lt;History /&gt; Activity&lt;/span&gt;
+        &lt;span className="nav-disabled"&gt;&lt;Database /&gt; Master data&lt;/span&gt;
+        &lt;span className="nav-disabled"&gt;&lt;Settings /&gt; Settings&lt;/span&gt;
+        &lt;div className="rail-footer"&gt;&lt;Boxes /&gt; Frame Inventory &lt;span&gt;v1.0&lt;/span&gt;&lt;/div&gt;
+      &lt;/aside&gt;</code></pre>
+  <div class="snippet-explain">
+    <p>The breadcrumb trail is built the same way Direction A's <code>crumbs</code> arrays are: a fixed "Inventory" root, then "Frames," then an optional third segment for the current sub-page (<code>pageLabel</code> here plays the role of Direction A's <code>frame.id</code>/"Edit"/"History" trailing crumb). The rail nav is a direct structural echo of Direction A's <code>Rail</code> — a persistent left-hand navigation surface with a "Frames" primary item, sitting alongside disabled placeholder items ("Activity," "Master data," "Settings") for workspace areas the exercise didn't require building out.</p>
+  </div>
+</div>
+<p>The "dense table + filter sidebar" half of Direction A's search screen has the same correspondence in <code>FrameInventoryPage.tsx</code>, which pairs a <code>filter-panel</code> aside with a <code>results-panel</code> section immediately below it:</p>
+<div class="snippet">
+  <div class="snippet-label">src/frontend/src/pages/FrameInventoryPage.tsx:79-92</div>
+  <pre><code>      &lt;div className="inventory-layout"&gt;
+        &lt;aside className="filter-panel" aria-label="Frame filters"&gt;
+          &lt;div className="filter-title"&gt;&lt;SlidersHorizontal /&gt;&lt;h2&gt;Filters&lt;/h2&gt;{hasFilters &amp;&amp; &lt;button onClick={clearFilters}&gt;Clear all&lt;/button&gt;}&lt;/div&gt;
+          &lt;form className="search-field" onSubmit={submitSearch}&gt;
+            &lt;button className="search-submit" type="submit" aria-label="Search frames"&gt;&lt;Search /&gt;&lt;/button&gt;
+            &lt;input value={query} onChange={(event) =&gt; setQuery(event.target.value)} placeholder="Frame ID, site or location" aria-label="Search frames" /&gt;
+            {query &amp;&amp; &lt;button className="search-clear" type="button" onClick={() =&gt; { setQuery(''); updateParam('q') }} aria-label="Clear search"&gt;&lt;X /&gt;&lt;/button&gt;}
+          &lt;/form&gt;
+          &lt;label className="select-field"&gt;&lt;span&gt;Status&lt;/span&gt;&lt;select value={search.status ?? ''} onChange={(event) =&gt; updateParam('status', event.target.value)}&gt;&lt;option value=""&gt;All statuses&lt;/option&gt;{statuses.map((value) =&gt; &lt;option key={value} value={value}&gt;{pretty(value)}&lt;/option&gt;)}&lt;/select&gt;&lt;/label&gt;
+          &lt;label className="select-field"&gt;&lt;span&gt;Environment&lt;/span&gt;&lt;select value={search.environment ?? ''} onChange={(event) =&gt; updateParam('environment', event.target.value)}&gt;&lt;option value=""&gt;All environments&lt;/option&gt;{environments.map((value) =&gt; &lt;option key={value} value={value}&gt;{pretty(value)}&lt;/option&gt;)}&lt;/select&gt;&lt;/label&gt;
+          &lt;label className="select-field"&gt;&lt;span&gt;Media type&lt;/span&gt;&lt;select value={search.mediaType ?? ''} onChange={(event) =&gt; updateParam('mediaType', event.target.value)}&gt;&lt;option value=""&gt;All media types&lt;/option&gt;{mediaTypes.map((value) =&gt; &lt;option key={value} value={value}&gt;{pretty(value)}&lt;/option&gt;)}&lt;/select&gt;&lt;/label&gt;
+        &lt;/aside&gt;
+
+        &lt;section className="results-panel" aria-live="polite"&gt;</code></pre>
+  <div class="snippet-explain">
+    <p>Compare this to <code>DirA_Search</code>'s two-column grid: a fixed-width <code>&lt;aside className="filters"&gt;</code> holding checkbox groups for region/site type/status/tech, next to a results <code>&lt;section&gt;</code> containing the dense <code>&lt;table className="tbl"&gt;</code>. <code>FrameInventoryPage</code> keeps the same shape — a narrower filter column (status/environment/media type instead of Direction A's region/site/tech, matching this domain's actual fields) beside a wider results column whose <code>inventory-table</code> further down the file mirrors Direction A's dense row layout (ID cell, site/location stack cells, status chip, trailing open-row action). The routing layer matches too: <code>App.tsx</code>'s five <code>/frames/...</code> routes (list, new, import, <code>:frameId</code> detail, <code>:frameId/edit</code>, <code>:frameId/history</code>) are the same "list → detail → edit / history sub-pages" shape as Direction A's <code>screen</code> state machine (<code>search</code> → <code>detail</code> → <code>edit</code> / <code>history</code>), just expressed as real routes instead of client-side view-swapping. So the influence is real and structural — a layout blueprint that was followed — even though it was reimplemented from scratch in TSX/CSS rather than imported as a file.</p>
   </div>
 </div>
 
