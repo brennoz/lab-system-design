@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Global Frame Inventory — Frame CRUD &amp; Optimistic Concurrency</title>
+<style>
+  :root{--ink:#1a1a1a;--muted:#555;--border:#ddd;--bg-code:#f7f7f5;--accent:#2563eb;--pass:#16a34a;--fail:#dc2626;--warn:#d97706;--bg:#fefefe;--sidebar:#f3f4f6;--reveal-bg:#fffbeb}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Georgia',serif;font-size:17px;line-height:1.7;color:var(--ink);background:var(--bg);max-width:900px;margin:0 auto;padding:3rem 2rem 6rem}
+  h1{font-size:2rem;line-height:1.2;margin-bottom:.4rem}
+  h2{font-size:1.35rem;margin:2.5rem 0 .75rem;border-bottom:1px solid var(--border);padding-bottom:.3rem}
+  h3{font-size:1.05rem;margin:1rem 0 .4rem;color:var(--ink)}
+  h4{font-size:.85rem;margin:.6rem 0 .2rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+  p{margin-bottom:.8rem}
+  code{font-family:monospace;background:var(--bg-code);padding:.1em .35em;border-radius:3px;font-size:.9em}
+  .meta{color:var(--muted);font-size:.85rem;font-family:monospace;margin-bottom:2rem}
+  .lesson-nav{font-size:.85rem;margin-bottom:3rem;color:var(--muted)}
+  .lesson-nav a{color:var(--accent);text-decoration:none}
+  .callout{border-left:4px solid var(--accent);background:var(--sidebar);padding:.9rem 1.2rem;margin:1.5rem 0;border-radius:0 6px 6px 0}
+  .callout.pass{border-color:var(--pass)}
+  .callout.warn{border-color:var(--warn)}
+  .callout strong{display:block;margin-bottom:.3rem;font-size:.88rem;font-family:monospace}
+  table{width:100%;border-collapse:collapse;margin:1.2rem 0;font-size:.9rem}
+  th,td{border:1px solid var(--border);padding:.5rem .7rem;text-align:left;vertical-align:top}
+  th{background:var(--sidebar);font-family:monospace;font-size:.78rem;text-transform:uppercase}
+  .snippet{border:1px solid var(--border);border-radius:8px;margin:1.2rem 0;overflow:hidden}
+  .snippet-label{background:var(--sidebar);border-bottom:1px solid var(--border);padding:.5rem 1rem;font-family:monospace;font-size:.78rem;color:var(--muted)}
+  .snippet pre{background:var(--bg-code);padding:1rem;overflow-x:auto;font-size:.85rem;line-height:1.5}
+  .snippet-explain{padding:.9rem 1.2rem;font-size:.95rem}
+  footer{margin-top:4rem;border-top:1px solid var(--border);padding-top:1.5rem;font-size:.82rem;color:var(--muted)}
+  .diagram-wrap{width:100%;overflow-x:auto;margin:1.5rem 0 .5rem;border:1px solid var(--border);border-radius:8px;background:#fff}
+  .diagram-wrap svg{display:block;width:100%;height:auto}
+  .diagram-caption{font-size:.88rem;color:var(--muted);font-style:italic;margin:0 0 1.5rem}
+</style>
+</head>
+<body>
+<div class="lesson-nav"><a href="../">← Global Frame Inventory Study Guide</a></div>
+<h1>Frame CRUD &amp; Optimistic Concurrency</h1>
+<div class="meta">Create/update flow · JPA @Version · conflict handling · concurrent-write sequence diagram</div>
+
+<p>
+  The Domain Model page introduced <code>Frame.version</code> — a JPA <code>@Version</code>
+  column — and deferred its mechanics here: how a stale write is actually caught, and what
+  happens when two clients edit the same frame at the same time. All three write paths in this
+  page live in <code>FrameCommandService</code>.
+</p>
+
+<h2>Create</h2>
+<div class="snippet">
+  <div class="snippet-label">src/backend/src/main/java/com/global/ct/frameinventory/frame/service/FrameCommandService.java:44-65</div>
+  <pre><code>    @Transactional
+    public FrameResponse create(CreateFrameRequest request) {
+        if (frameRepository.existsById(request.frameId())) {
+            throw new DuplicateFrameException(request.frameId());
+        }
+
+        Instant now = now();
+        Frame frame = Frame.create(request.frameId(), request.toData(), now);
+        try {
+            frameRepository.saveAndFlush(frame);
+        } catch (DataIntegrityViolationException exception) {
+            throw new DuplicateFrameException(request.frameId());
+        }
+
+        List&lt;FrameFieldChange&gt; changes = new ArrayList&lt;&gt;();
+        changes.add(new FrameFieldChange("frameId", null, frame.getFrameId()));
+        changes.addAll(frame.data().changesFrom(null));
+        revisionRepository.save(FrameRevision.record(
+            frame, RevisionAction.CREATED, ChangeSource.MANUAL, MANUAL_ACTOR, now, changes
+        ));
+        return FrameResponse.from(frame);
+    }</code></pre>
+  <div class="snippet-explain">
+    <p>
+      There are two separate defenses against the same duplicate-ID problem here, and only one
+      of them is load-bearing. The <code>existsById</code> check (line 46) is a fast, readable
+      early exit for the common case — it lets most duplicate-create attempts fail with a clean
+      error before any write is attempted. But <code>existsById</code>-then-<code>save</code> is
+      itself a check-then-act race: two concurrent <code>create()</code> calls for the same
+      <code>frameId</code> can both pass the <code>existsById</code> check before either one has
+      committed, because reading "does this row exist" and later writing it are not atomic with
+      each other. The real guarantee is the database's own primary-key constraint on
+      <code>frame_id</code>, surfaced here as the <code>try</code>/<code>catch</code> around
+      <code>saveAndFlush</code> (lines 52-56): if both requests reach the insert, exactly one of
+      them succeeds and the other gets a <code>DataIntegrityViolationException</code>, which this
+      method translates back into the same <code>DuplicateFrameException</code> the fast-path
+      check would have thrown. The <code>existsById</code> call is an optimization for the
+      overwhelmingly common non-racing case, not the correctness mechanism — the unique
+      constraint is.
+    </p>
+  </div>
+</div>
+
+<h2>Update and the version check</h2>
+<div class="snippet">
+  <div class="snippet-label">src/backend/src/main/java/com/global/ct/frameinventory/frame/service/FrameCommandService.java:67-90</div>
+  <pre><code>    @Transactional
+    public FrameResponse update(String frameId, UpdateFrameRequest request) {
+        Frame frame = frameRepository.findById(frameId)
+            .orElseThrow(() -&gt; new FrameNotFoundException(frameId));
+        if (frame.getVersion() != request.version()) {
+            throw new StaleFrameVersionException(frameId);
+        }
+
+        Instant now = now();
+        List&lt;FrameFieldChange&gt; changes = frame.update(request.toData(), now);
+        if (changes.isEmpty()) {
+            return FrameResponse.from(frame);
+        }
+
+        try {
+            frameRepository.flush();
+        } catch (ObjectOptimisticLockingFailureException exception) {
+            throw new StaleFrameVersionException(frameId);
+        }
+        revisionRepository.saveAndFlush(FrameRevision.record(
+            frame, RevisionAction.UPDATED, ChangeSource.MANUAL, MANUAL_ACTOR, now, changes
+        ));
+        return FrameResponse.from(frame);
+    }</code></pre>
+  <div class="snippet-explain">
+    <p>
+      This method has two independent layers of defense against a lost update, and they close
+      different halves of the race window.
+    </p>
+    <p>
+      <strong>Layer 1 — the explicit check (lines 71-73):</strong>
+      <code>frame.getVersion() != request.version()</code> compares the version this request's
+      client last read against the version currently in the freshly-loaded entity. If they
+      differ, it fails immediately with a clear <code>StaleFrameVersionException</code>, before
+      touching <code>frame.update()</code> or opening a write at all. This makes the common case
+      — a client editing a genuinely stale copy — fast and cheap to reject.
+    </p>
+    <p>
+      <strong>Layer 2 — the JPA flush-catch (lines 81-85):</strong> the explicit check above
+      reads <code>frame.getVersion()</code> at the start of this transaction, but that value can
+      itself go stale before this transaction commits, if a second concurrent request also
+      passes its own version check and commits first. <code>@Version</code> means every
+      <code>UPDATE</code> Hibernate issues carries a <code>WHERE version = ?</code> clause; if
+      the row's version changed underneath this transaction between the read and the
+      <code>flush()</code>, zero rows match, Hibernate raises
+      <code>ObjectOptimisticLockingFailureException</code>, and this method rethrows it as the
+      same <code>StaleFrameVersionException</code>. Layer 1 exists to make the common case fast
+      and give a clean, early rejection; layer 2 is what actually closes the race for the rare
+      case where two requests both pass layer 1 before either one's transaction has committed —
+      the database's row-level version guarantee is the real correctness mechanism, exactly the
+      same relationship as <code>existsById</code> vs. the unique constraint in <code>create()</code>
+      above.
+    </p>
+    <p>
+      One more branch worth flagging without fully explaining it here: if
+      <code>frame.update()</code> (line 76) computes an empty change list — the request's values
+      match what's already stored — the method returns early at line 78 and never writes a
+      revision. Why revisions are diff-driven, and what "no-op" means at the field level, is the
+      subject of the next page, Audit History.
+    </p>
+  </div>
+</div>
+
+<h2>CSV upsert path</h2>
+<div class="snippet">
+  <div class="snippet-label">src/backend/src/main/java/com/global/ct/frameinventory/frame/service/FrameCommandService.java:92-117</div>
+  <pre><code>    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public FrameImportOutcome upsertImportedFrame(String frameId, FrameData data) {
+        Frame frame = frameRepository.findById(frameId).orElse(null);
+        Instant now = now();
+        if (frame == null) {
+            frame = Frame.create(frameId, data, now);
+            frameRepository.saveAndFlush(frame);
+            List&lt;FrameFieldChange&gt; changes = new ArrayList&lt;&gt;();
+            changes.add(new FrameFieldChange("frameId", null, frameId));
+            changes.addAll(data.changesFrom(null));
+            revisionRepository.saveAndFlush(FrameRevision.record(
+                frame, RevisionAction.CREATED, ChangeSource.CSV, "csv-import", now, changes
+            ));
+            return FrameImportOutcome.CREATED;
+        }
+
+        List&lt;FrameFieldChange&gt; changes = frame.update(data, now);
+        if (changes.isEmpty()) {
+            return FrameImportOutcome.UNCHANGED;
+        }
+        frameRepository.flush();
+        revisionRepository.saveAndFlush(FrameRevision.record(
+            frame, RevisionAction.UPDATED, ChangeSource.CSV, "csv-import", now, changes
+        ));
+        return FrameImportOutcome.UPDATED;
+    }</code></pre>
+  <div class="snippet-explain">
+    <p>
+      <code>@Transactional(propagation = Propagation.REQUIRES_NEW)</code> (line 92) means every
+      call to this method opens its own, fully independent database transaction — suspending
+      whatever transaction (if any) is active on the calling thread rather than joining it. For
+      CSV import, this is called once per row. Because each row's write is its own transaction
+      with its own commit point, one bad row failing partway through does not roll back any row
+      already committed earlier in the same import — those commits already happened, in their
+      own transactions, and are unaffected by a later row's failure. This is the concrete
+      mechanism behind the CSV import ADR's partial-success guarantee (some rows created,
+      some updated, some rejected, all in the same import run). The full import pipeline —
+      validation, row limits, error reporting, and why per-row transactions were chosen over
+      parallelizing across virtual threads — is covered in depth on the later CSV Import page;
+      here it's enough to see that this is the same optimistic-lock machinery as manual
+      <code>update()</code> above, reused for the bulk path via
+      <code>frame.update()</code> and a plain <code>flush()</code> (no explicit version
+      argument — CSV import upserts unconditionally by <code>frameId</code>, it does not carry a
+      client-supplied version to compare against).
+    </p>
+  </div>
+</div>
+
+<h2>StaleFrameVersionException → 409</h2>
+<div class="snippet">
+  <div class="snippet-label">src/backend/src/main/java/com/global/ct/frameinventory/frame/exception/StaleFrameVersionException.java:1-7</div>
+  <pre><code>package com.global.ct.frameinventory.frame.exception;
+
+public class StaleFrameVersionException extends RuntimeException {
+    public StaleFrameVersionException(String frameId) {
+        super("Frame '" + frameId + "' was modified by another request; reload it and try again");
+    }
+}</code></pre>
+  <div class="snippet-explain">
+    <p>
+      Worth being precise here rather than assuming: this class is a plain
+      <code>RuntimeException</code> subclass with a constructor that builds a human-readable
+      message. It carries no <code>@ResponseStatus</code> annotation and no HTTP-specific code
+      anywhere in the file — nothing in this class itself says "409." The mapping from this
+      exception to an HTTP <code>409 Conflict</code> response therefore has to happen somewhere
+      else in the request pipeline, almost certainly in <code>ApiExceptionHandler</code> (in the
+      <code>web</code> package, visible in the package layout on the Architecture Overview page)
+      — but that file is this guide's later API Error Handling &amp; Observability page's
+      subject, not read for this page, so its exact mechanism (a
+      <code>@ExceptionHandler</code> method, an RFC 9457 <code>ProblemDetail</code> body, or
+      something else) is deliberately left unstated here rather than guessed.
+    </p>
+  </div>
+</div>
+
+<h2>Diagram B — two clients racing to update the same frame</h2>
+<p>
+  Both clients below have already read the frame independently and both hold
+  <code>version=3</code>. Both send a <code>PUT</code> with that version at roughly the same
+  time. The backend still processes writes one at a time — <code>@Transactional</code> commits
+  are serialized at the row level by the database — so one request's transaction always commits
+  before the other's version check runs against the now-current row.
+</p>
+<div class="diagram-wrap">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 470" font-family="Menlo,Consolas,monospace" font-size="12">
+  <rect width="760" height="470" fill="#fafafa"/>
+
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L6,3 L0,6 Z" fill="#1e3a8a"/>
+    </marker>
+    <marker id="arrowPass" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L6,3 L0,6 Z" fill="#16a34a"/>
+    </marker>
+    <marker id="arrowFail" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L6,3 L0,6 Z" fill="#dc2626"/>
+    </marker>
+  </defs>
+
+  <!-- Participant headers -->
+  <rect x="40" y="20" width="180" height="50" rx="8" fill="#f3f4f6" stroke="#6b7280" stroke-width="1.5"/>
+  <text x="130" y="50" text-anchor="middle" font-weight="bold" fill="#374151">Client A</text>
+
+  <rect x="290" y="20" width="180" height="50" rx="8" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+  <text x="380" y="50" text-anchor="middle" font-weight="bold" fill="#14532d">Backend</text>
+
+  <rect x="540" y="20" width="180" height="50" rx="8" fill="#f3f4f6" stroke="#6b7280" stroke-width="1.5"/>
+  <text x="630" y="50" text-anchor="middle" font-weight="bold" fill="#374151">Client B</text>
+
+  <!-- Lifelines -->
+  <line x1="130" y1="70" x2="130" y2="450" stroke="#9ca3af" stroke-width="1.5" stroke-dasharray="4,3"/>
+  <line x1="380" y1="70" x2="380" y2="450" stroke="#9ca3af" stroke-width="1.5" stroke-dasharray="4,3"/>
+  <line x1="630" y1="70" x2="630" y2="450" stroke="#9ca3af" stroke-width="1.5" stroke-dasharray="4,3"/>
+
+  <text x="380" y="95" text-anchor="middle" fill="#555" font-style="italic" font-size="11">Both already hold the frame at version=3</text>
+
+  <!-- Request A -->
+  <text x="255" y="122" text-anchor="middle" fill="#1e3a8a" font-size="11">PUT /frames/{id} v=3</text>
+  <path d="M130,130 L378,130" stroke="#1e3a8a" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+
+  <!-- Request B -->
+  <text x="505" y="147" text-anchor="middle" fill="#1e3a8a" font-size="11">PUT /frames/{id} v=3</text>
+  <path d="M630,155 L382,155" stroke="#1e3a8a" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+
+  <text x="380" y="175" text-anchor="middle" fill="#555" font-style="italic" font-size="10">(both requests reach the backend within milliseconds)</text>
+
+  <!-- Processing A -->
+  <rect x="190" y="192" width="380" height="70" rx="6" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+  <text x="380" y="212" text-anchor="middle" fill="#14532d" font-size="11">Backend processes Client A's request first</text>
+  <text x="380" y="230" text-anchor="middle" fill="#14532d" font-size="11">version check: 3 == 3 -&gt; OK, commit</text>
+  <text x="380" y="248" text-anchor="middle" fill="#14532d" font-size="11">frame version is now 4</text>
+
+  <!-- Response to A -->
+  <text x="255" y="282" text-anchor="middle" fill="#16a34a" font-size="11">200 OK (v=4)</text>
+  <path d="M378,290 L130,290" stroke="#16a34a" stroke-width="2" fill="none" marker-end="url(#arrowPass)"/>
+
+  <!-- Processing B -->
+  <rect x="190" y="322" width="380" height="80" rx="6" fill="#fee2e2" stroke="#dc2626" stroke-width="1.5"/>
+  <text x="380" y="342" text-anchor="middle" fill="#7f1d1d" font-size="11">Backend processes Client B's request next</text>
+  <text x="380" y="360" text-anchor="middle" fill="#7f1d1d" font-size="11">version check: 4 != 3 (frame is now v=4)</text>
+  <text x="380" y="378" text-anchor="middle" fill="#7f1d1d" font-size="11">mismatch -&gt; reject as stale</text>
+
+  <!-- Response to B -->
+  <text x="505" y="412" text-anchor="middle" fill="#dc2626" font-size="11">409 Conflict</text>
+  <path d="M382,420 L628,420" stroke="#dc2626" stroke-width="2" fill="none" marker-end="url(#arrowFail)"/>
+</svg>
+</div>
+<p class="diagram-caption">
+  Ordering is not deterministic — either client could "win" depending on which request's
+  transaction commits first; the point is that at most one of them ever does.
+</p>
+
+<footer>Global Frame Inventory — study docs for the user's own take-home solution review.</footer>
+</body>
+</html>
