@@ -66,21 +66,24 @@ history), not mirror the CSV 1:1. The table below checks the solution's actual
   <td><code>countryCode</code>, <code>region</code>, <code>town</code>, <code>postcode</code>,
   <code>longitude</code>, <code>latitude</code>, <code>address</code>,
   <code>distanceToClosestSchool</code></td>
-  <td><strong>Kept, near 1:1.</strong> The CSV additionally splits postcode into
-  <code>postcode_area</code>/<code>postcode_district</code>/<code>postcode_sector</code>/<code>postcode_unit</code>
-  and carries a separate <code>location</code>/<code>location_id</code> pair — those are
-  <strong>collapsed into the single <code>postcode</code> string</strong>, since none of the four
-  features need postcode segment-level querying.</td>
+  <td><strong>Kept, near 1:1.</strong> <code>FrameCsvMapper</code> reads the CSV's
+  <code>postcode</code> column straight into <code>postcode</code> — a 1:1 rename, not a merge.
+  The CSV's separate <code>postcode_area</code>/<code>postcode_district</code>/<code>postcode_sector</code>/<code>postcode_unit</code>
+  and <code>location</code>/<code>location_id</code> columns are <strong>unused/dropped</strong>
+  (never referenced anywhere in the backend), since none of the four features need postcode
+  segment-level querying.</td>
 </tr>
 <tr>
   <td>Site &amp; position — "the kind of place the frame lives in (station, underground, roadside,
   airport, etc.) and where on that site it sits"</td>
   <td><code>environment</code> (enum), <code>siteNumber</code>, <code>station</code></td>
   <td><strong>Kept, renamed.</strong> The free-text CSV <code>environment</code> column becomes a
-  closed <code>FrameEnvironment</code> enum — see the Enums section below. CSV's
-  <code>panel_number</code>, <code>inventory_site_no</code>, and <code>airport</code> columns are
-  <strong>dropped/collapsed</strong> into <code>siteNumber</code>; no separate field distinguishes
-  "airport" as a boolean flag since it's already expressible as
+  closed <code>FrameEnvironment</code> enum — see the Enums section below.
+  <code>FrameCsvMapper</code> reads the CSV's <code>site_no</code> column straight into
+  <code>siteNumber</code> — a 1:1 rename, not a merge. CSV's <code>panel_number</code>,
+  <code>inventory_site_no</code>, and <code>airport</code> columns are
+  <strong>unused/dropped</strong> (never referenced anywhere in the backend); no separate field
+  distinguishes "airport" as a boolean flag since it's already expressible as
   <code>environment = AIRPORT</code>.</td>
 </tr>
 <tr>
@@ -401,7 +404,8 @@ Three fields are modelled as closed Java enums rather than free strings, each ba
     This is the OOH site-type classification straight out of §4's "Site &amp; position"
     grouping ("station, underground, roadside, airport, etc.") — closing it to a fixed enum
     rather than a free-text CSV column also makes it usable as an exact-match search filter
-    (page 0005) without needing to normalize spelling variants.
+    (page 0005) and gives closed-set validation on any future or unknown input, rather than
+    silently accepting whatever string a caller sends.
     </p>
   </div>
 </div>
