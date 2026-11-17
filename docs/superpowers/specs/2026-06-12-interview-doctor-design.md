@@ -18,7 +18,7 @@ User pastes their CV and a job description → AI returns a readiness score, a l
 
 ### V0 — Stateless Analyzer (ship first)
 - CV + JD text form
-- Gemini 1.5 Flash analysis (free tier)
+- Groq llama-3.3-70b analysis (free tier)
 - Readiness score (0–100%)
 - Skill gaps list (with severity: critical / minor)
 - Strengths list
@@ -51,7 +51,7 @@ middleware.ts  — rate limit check (per IP)
 app/actions/analyze.ts  (Next.js Server Action)
   │  1. sanitize inputs
   │  2. build structured prompt
-  │  3. call Gemini 1.5 Flash
+  │  3. call Groq llama-3.3-70b
   │  4. parse JSON response
   ▼
 results/page.tsx  — renders ScoreCard + GapList
@@ -82,7 +82,7 @@ Supabase PostgreSQL (free tier, 500MB)
 |---|---|---|
 | Framework | Next.js 14+ App Router | Frontend + API in one Vercel project |
 | Language | TypeScript | Type safety throughout |
-| AI | Gemini 1.5 Flash | 1,500 req/day free, no credit card |
+| AI | Groq llama-3.3-70b | 14,400 req/day free, no credit card |
 | Styling | Tailwind CSS | Utility-first, works with App Router |
 | Hosting | Vercel (free hobby tier) | Native Next.js, auto-deploys on push |
 | Analytics | Vercel Analytics | Free, zero config, page views + visitors |
@@ -105,13 +105,13 @@ interview-doctor/
 │   ├── results/
 │   │   └── page.tsx            — score + gap list
 │   └── actions/
-│       └── analyze.ts          — Server Action: Gemini call
+│       └── analyze.ts          — Server Action: Groq call
 ├── components/
 │   ├── AnalyzerForm.tsx        — CV + JD textareas + submit
 │   ├── ScoreCard.tsx           — score % with progress bar
 │   └── GapList.tsx             — gaps + strengths columns
 ├── lib/
-│   ├── gemini.ts               — Gemini SDK wrapper
+│   ├── gemini.ts               — Groq SDK wrapper
 │   ├── sanitize.ts             — strip HTML, truncate to 8k chars
 │   └── rateLimit.ts            — per-IP in-memory store
 ├── middleware.ts               — rate limit + CORS enforcement
@@ -157,7 +157,7 @@ JOB DESCRIPTION:
 |---|---|---|
 | API key | Server-side env var only | Never reaches browser |
 | Input | Strip HTML + truncate before prompt | Prompt injection + context overflow prevention |
-| Rate limiting | Per-IP in middleware (v0: in-memory, v1: Upstash) | Protect Gemini free quota from abuse |
+| Rate limiting | Per-IP in middleware (v0: in-memory, v1: Upstash) | Protect Groq free quota from abuse |
 | CORS | Locked to own domain in `next.config.ts` | Block external API callers |
 | HTTPS | Vercel free TLS | In-transit encryption |
 | Headers | CSP, X-Frame-Options, X-Content-Type-Options | XSS + clickjacking prevention |
@@ -185,7 +185,7 @@ Border:        #1a3d26
 **Typography:** JetBrains Mono (Google Fonts, free) — monospace throughout.
 
 **Motion:**
-- ECG scanning line while Gemini processes
+- ECG scanning line while Groq processes
 - Score counts up 0 → final value on reveal
 - Gap/strength items stagger in with delay
 - Button pulse on hover
@@ -226,7 +226,7 @@ Preview deployments: every PR gets a unique `*.vercel.app` URL automatically.
 | 1 | Project scaffold: Next.js 14 + Tailwind + TypeScript |
 | 2 | Security headers + CORS in next.config.ts |
 | 3 | Input sanitization (lib/sanitize.ts) |
-| 4 | Gemini SDK wrapper (lib/gemini.ts) |
+| 4 | Groq SDK wrapper (lib/gemini.ts) |
 | 5 | Rate limiting middleware (per-IP in-memory) |
 | 6 | Server Action: analyze CV+JD (app/actions/analyze.ts) |
 | 7 | AnalyzerForm component (landing page UI) |
@@ -256,7 +256,7 @@ Preview deployments: every PR gets a unique `*.vercel.app` URL automatically.
 | Service | Free Limit | Usage estimate |
 |---|---|---|
 | Vercel | Unlimited hobby deploys | N/A |
-| Gemini 1.5 Flash | 1,500 req/day | ~50 users/day comfortable |
+| Groq llama-3.3-70b | 1,500 req/day | ~50 users/day comfortable |
 | Vercel Analytics | 2,500 events/month | Fine for early traffic |
 | Supabase (v1) | 500MB PostgreSQL | Years of community resources |
 | Upstash Redis (v1) | 10k commands/day | Fine for rate limiting |

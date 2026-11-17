@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build a stateless CV + Job Description analyzer that calls Gemini 1.5 Flash and returns a readiness score + skill gap list, deployed free on Vercel.
+**Goal:** Build a stateless CV + Job Description analyzer that calls Groq llama-3.3-70b and returns a readiness score + skill gap list, deployed free on Vercel.
 
-**Architecture:** Next.js 14 App Router monolith. User submits CV + JD via a form backed by a Server Action. The Server Action sanitizes inputs, calls Gemini 1.5 Flash, parses the JSON response, and returns the result to the client via `useActionState`. No database, no auth, no separate backend.
+**Architecture:** Next.js 14 App Router monolith. User submits CV + JD via a form backed by a Server Action. The Server Action sanitizes inputs, calls Groq llama-3.3-70b, parses the JSON response, and returns the result to the client via `useActionState`. No database, no auth, no separate backend.
 
-**Tech Stack:** Next.js 14, TypeScript, Tailwind CSS, `@google/generative-ai` SDK, `@vercel/analytics`, Vitest for unit tests, GitHub Actions for CI, Vercel for hosting.
+**Tech Stack:** Next.js 14, TypeScript, Tailwind CSS, `groq-sdk` SDK, `@vercel/analytics`, Vitest for unit tests, GitHub Actions for CI, Vercel for hosting.
 
 ---
 
@@ -17,16 +17,16 @@
 | `app/layout.tsx` | Root layout: JetBrains Mono font, Vercel Analytics, background color |
 | `app/page.tsx` | Home page: renders `AnalyzerForm` |
 | `app/globals.css` | CSS variables for medical terminal palette |
-| `app/actions/analyze.ts` | Server Action: sanitize → Gemini → parse JSON → return result |
+| `app/actions/analyze.ts` | Server Action: sanitize → Groq → parse JSON → return result |
 | `components/AnalyzerForm.tsx` | Client Component: form + `useActionState` + renders results |
 | `components/ScoreCard.tsx` | Score display: animated count-up + progress bar |
 | `components/GapList.tsx` | Two-column: gaps (red) + strengths (blue) |
-| `lib/gemini.ts` | Gemini SDK wrapper: single `analyzeWithGemini(prompt)` function |
+| `lib/gemini.ts` | Groq SDK wrapper: single `analyzeWithGemini(prompt)` function |
 | `lib/sanitize.ts` | Strip HTML tags, truncate to 8000 chars, trim whitespace |
 | `lib/rateLimit.ts` | Per-IP in-memory rate limit: 5 req/min, `resetAll()` for tests |
 | `next.config.ts` | Security headers: CSP, X-Frame-Options, X-Content-Type-Options |
 | `vitest.config.ts` | Vitest with jsdom + `@/` path alias |
-| `.env.example` | Documents `GEMINI_API_KEY=` (value empty) |
+| `.env.example` | Documents `GROQ_API_KEY=` (value empty) |
 | `.github/workflows/ci.yml` | tsc + eslint + vitest on every push/PR |
 
 ---
@@ -55,7 +55,7 @@ When prompted: select defaults. This creates the project with App Router, TypeSc
 
 ```bash
 cd /home/brennoz77/LABS/InterviewDoctor
-npm install @google/generative-ai @vercel/analytics
+npm install groq-sdk @vercel/analytics
 npm install -D vitest @vitejs/plugin-react jsdom
 ```
 
@@ -178,7 +178,7 @@ export default nextConfig
 
 ```
 # Copy this file to .env.local and fill in the values
-GEMINI_API_KEY=
+GROQ_API_KEY=
 ```
 
 - [ ] **Step 3: Verify .env.local is gitignored**
@@ -362,18 +362,18 @@ git commit -m "add rate limiter: 5 req/min per IP, in-memory (TDD)"
 
 ---
 
-## Task 6: Gemini SDK wrapper (TDD)
+## Task 6: Groq SDK wrapper (TDD)
 
 **Files:**
 - Create: `lib/gemini.ts`
 - Create: `lib/__tests__/gemini.test.ts`
 
-- [ ] **Step 1: Create .env.local with your Gemini key**
+- [ ] **Step 1: Create .env.local with your Groq key**
 
-Get a free key at https://aistudio.google.com/app/apikey (sign in with Google, click "Create API key").
+Get a free key at https://console.groq.com/keys (sign in with Google, click "Create API key").
 
 ```bash
-echo "GEMINI_API_KEY=your_key_here" > .env.local
+echo "GROQ_API_KEY=your_key_here" > .env.local
 ```
 
 Replace `your_key_here` with the actual key.
@@ -384,8 +384,8 @@ Replace `your_key_here` with the actual key.
 // lib/__tests__/gemini.test.ts
 import { describe, it, expect, vi } from 'vitest'
 
-vi.mock('@google/generative-ai', () => ({
-  GoogleGenerativeAI: vi.fn().mockImplementation(() => ({
+vi.mock('groq-sdk', () => ({
+  Groq: vi.fn().mockImplementation(() => ({
     getGenerativeModel: vi.fn().mockReturnValue({
       generateContent: vi.fn().mockResolvedValue({
         response: {
@@ -399,7 +399,7 @@ vi.mock('@google/generative-ai', () => ({
 import { analyzeWithGemini } from '@/lib/gemini'
 
 describe('analyzeWithGemini', () => {
-  it('returns text from Gemini response', async () => {
+  it('returns text from Groq response', async () => {
     const result = await analyzeWithGemini('test prompt')
     expect(result).toContain('"score"')
   })
@@ -418,11 +418,11 @@ Expected: `FAIL — Cannot find module '@/lib/gemini'`
 
 ```typescript
 // lib/gemini.ts
-import { GoogleGenerativeAI } from '@google/generative-ai'
+import { Groq } from 'groq-sdk'
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!)
+const genAI = new Groq(process.env.GROQ_API_KEY!)
 
-const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' })
+const model = genAI.getGenerativeModel({ model: 'llama-3.3-70b-versatile' })
 
 export async function analyzeWithGemini(prompt: string): Promise<string> {
   const result = await model.generateContent(prompt)
@@ -442,7 +442,7 @@ Expected: `✓ 1 test passed`
 
 ```bash
 git add lib/gemini.ts lib/__tests__/gemini.test.ts
-git commit -m "add Gemini 1.5 Flash wrapper (TDD)"
+git commit -m "add Groq llama-3.3-70b wrapper (TDD)"
 ```
 
 ---
@@ -598,7 +598,7 @@ Expected: `✓ 9 tests passed`
 
 ```bash
 git add app/actions/
-git commit -m "add analyzeAction Server Action: sanitize, rate limit, Gemini (TDD)"
+git commit -m "add analyzeAction Server Action: sanitize, rate limit, Groq (TDD)"
 ```
 
 ---
@@ -1201,12 +1201,12 @@ git push -u origin main
 2. Click "Add New Project"
 3. Select `interview-doctor` from the list
 4. Framework preset: Next.js (auto-detected)
-5. Click "Deploy" — first deploy will run (no env vars yet, Gemini calls will fail)
+5. Click "Deploy" — first deploy will run (no env vars yet, Groq calls will fail)
 
 - [ ] **Step 4: Add environment variable in Vercel**
 
 1. In Vercel dashboard → your project → Settings → Environment Variables
-2. Add: `GEMINI_API_KEY` = your actual key
+2. Add: `GROQ_API_KEY` = your actual key
 3. Apply to: Production, Preview, Development
 4. Click Save
 

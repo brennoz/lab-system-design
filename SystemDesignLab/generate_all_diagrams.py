@@ -712,6 +712,113 @@ def diagram_10():
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# 11 — Twitter
+# ══════════════════════════════════════════════════════════════════════════════
+def diagram_11():
+    W, H = 1600, 960
+    s = svg_open(W, H)
+    s += title(W, "11 — Twitter Architecture",
+               "5 Microservices · Neo4j · Elasticsearch · Kafka Async Fan-out · OAuth2 · Prometheus")
+
+    # Heights: service_box with N items needs h = 68 + N*20 + padding
+    SH = 115   # service box h (2 items)
+
+    # ── Client ───────────────────────────────────────────────────────────────
+    s += box(30, 382, 110, 58, SLATE, BLUE_LT, "Client", "REST + JWT", BLUE_LT)
+
+    # ── SERVICES (x=190, w=200) ───────────────────────────────────────────────
+    s += service_box(190, 92,  200, SH, BLUE,   BLUE_LT,   "tweet-service",        ":8086", ["POST /tweets  /like", "POST /auth/token  /refresh"])
+    s += service_box(190, 222, 200, SH, GREEN,  GREEN_LT,  "social-graph-service", ":8087", ["POST /follows", "DELETE /follows"])
+    s += service_box(190, 352, 200, SH, TEAL,   TEAL_LT,   "feed-service",         ":8088", ["GET /feed", "KafkaListener (tweets.created)"])
+    s += service_box(190, 482, 200, SH, PURPLE, PURPLE_LT, "search-service",       ":8089", ["GET /search  /trending", "KafkaListener (tweets.created)"])
+    s += service_box(190, 612, 200, SH, SLATE,  BLUE_LT,   "dm-service",           ":8090", ["POST /dms", "GET /dms/{conversationId}"])
+
+    # ── KAFKA (x=455, y=100, h=210) ──────────────────────────────────────────
+    s += section_label(455, 78, "EVENT BUS", RED_LT)
+    s += service_box(455, 92, 165, 210, RED, RED_LT, "Kafka :9095", "tweets.created",
+                     ["part. by authorId", "──────────────",
+                      "consumer: feed-svc", "→ ZADD Redis feed",
+                      "consumer: search-svc", "→ index in ES"])
+
+    # ── STORAGE (x=685) ──────────────────────────────────────────────────────
+    s += section_label(685, 78, "Storage", ORANGE_LT)
+    s += service_box(685, 92,  200, 133, ORANGE, ORANGE_LT, "PostgreSQL :5438", "tweets + DMs",
+                     ["tweets, users (tweet-svc)", "refresh_tokens (OAuth2)", "direct_messages (dm-svc)"])
+    s += box(685, 245, 200, 58, GREEN,  GREEN_LT,  "Neo4j :7687",         "(:User)-[:FOLLOWS]->(:User)", GREEN_LT)
+    s += box(685, 323, 200, 58, TEAL,   TEAL_LT,   "Redis :6382",         "feed:{userId} sorted sets", TEAL_LT)
+    s += service_box(685, 401, 200, 115, PURPLE, PURPLE_LT, "Elasticsearch :9200", "tweets index",
+                     ["content: text (BM25)", "hashtags: keyword[]"])
+
+    # ── AUTH + OBSERVABILITY (x=950) ─────────────────────────────────────────
+    s += section_label(950, 78, "Auth + Observability", PURPLE_LT)
+    s += service_box(950, 92,  195, 133, PURPLE, PURPLE_LT, "OAuth2 / JWT", "tweet-service",
+                     ["access_token: JWT 15 min", "refresh_token: UUID 7d (DB)", "BCrypt · token rotation"])
+    s += service_box(950, 245, 195, 153, ORANGE, ORANGE_LT, "Prometheus", "Micrometer / Actuator",
+                     ["POST /tweets  rate+hist", "GET /feed  p50/p95/p99",
+                      "GET /search  ES latency", "Kafka consumer lag gauge"])
+
+    # ── ARROWS ───────────────────────────────────────────────────────────────
+    # client → all services (fan)
+    s += arrow(140, 411, 190, 149)    # → tweet-service
+    s += arrow(140, 411, 190, 279)    # → social-graph
+    s += arrow(140, 411, 190, 409)    # → feed-service
+    s += arrow(140, 411, 190, 539)    # → search-service
+    s += arrow(140, 411, 190, 669)    # → dm-service
+
+    # tweet-service → Kafka (producer)
+    s += arrow(390, 149, 455, 185, "arr-red", RED_LT, "TweetCreated")
+
+    # Kafka → feed-service (consumer — curve back left)
+    s += curve("M455,280 C435,310 415,409 390,409", TEAL_LT, "arr-teal")
+
+    # Kafka → search-service (consumer — curve back left + down)
+    s += curve("M455,302 C435,370 415,539 390,539", PURPLE_LT, "arr-purple")
+
+    # tweet-service → PostgreSQL (curve over Kafka)
+    s += curve("M390,100 C540,68 640,92 685,130", ORANGE_LT, "arr-orange")
+    s += note(488, 62, "save tweet + user", MUTED, 11)
+
+    # social-graph → Neo4j (curve under Kafka bottom=302)
+    s += curve("M390,279 C430,340 640,340 685,274", GREEN_LT, "arr-green")
+
+    # feed-service → Redis (below Kafka — straight arrow)
+    s += arrow(390, 409, 685, 352, "arr-teal", TEAL_LT)
+
+    # search-service → Elasticsearch (below Kafka — straight arrow)
+    s += arrow(390, 539, 685, 458, "arr-purple", PURPLE_LT)
+
+    # dm-service → PostgreSQL (long curve up)
+    s += curve("M390,669 C540,669 540,175 685,175", ORANGE_LT, "arr-orange")
+
+    # tweet-service → OAuth2 (long rightward)
+    s += arrow(390, 100, 950, 145, "arr-purple", PURPLE_LT)
+
+    # services → Prometheus (metrics)
+    s += curve("M390,360 C820,360 820,310 950,310", ORANGE_LT, "arr-orange")
+    s += note(600, 350, "metrics", MUTED, 11)
+
+    # ── LEGEND + NOTES (far-right column x=1210 — clear of all boxes) ────────
+    s += legend(1210, 90, [
+        (BLUE,   BLUE_LT,   "tweet-service — write, OAuth2, Kafka producer"),
+        (GREEN,  GREEN_LT,  "social-graph — Neo4j, index-free adjacency"),
+        (TEAL,   TEAL_LT,   "feed-service — Kafka consumer, Redis sorted sets"),
+        (PURPLE, PURPLE_LT, "search-service — Kafka consumer, Elasticsearch"),
+        (RED,    RED_LT,    "Kafka — async fan-out, 7d retention, 2 groups"),
+        (ORANGE, ORANGE_LT, "PostgreSQL / Prometheus / OAuth2"),
+    ])
+    s += notes_section(1210, 280, [
+        "1. Async fan-out: tweet published to Kafka,",
+        "   returns 201 immediately; consumers async",
+        "2. Neo4j O(depth) vs SQL JOIN O(n²) at scale",
+        "3. ES BM25 inverted index; terms agg trending",
+        "4. OAuth2: JWT 15min + refresh 7d, rotation",
+        "5. Kafka by authorId: per-author order kept",
+    ])
+    s += svg_close()
+    return html_wrap(s, W, H), W, H
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # Runner
 # ══════════════════════════════════════════════════════════════════════════════
 def generate(project_dir, diagram_fn):
@@ -743,3 +850,4 @@ if __name__ == "__main__":
     generate(f"{BASE}/08-flight-aggregator",   diagram_08)
     generate(f"{BASE}/09-bank-system",         diagram_09)
     generate(f"{BASE}/10-news-feed",           diagram_10)
+    generate(f"{BASE}/11-twitter",             diagram_11)
